@@ -43,9 +43,7 @@ export default function GoalsEditor({ goals, onClose }) {
         <Header title="Цели на день" onBack={onClose} />
         <form onSubmit={handleSave} className="px-3">
           <div className="rounded-2xl bg-white p-4 shadow-sm">
-            <p className="text-sm text-stone-500">
-              Задайте дневные Б/Ж/У в граммах — калории посчитаются автоматически (4/9/4 ккал на грамм).
-            </p>
+            <p className="text-sm text-stone-500">Дневные Б/Ж/У в граммах</p>
             <div className="mt-2.5 grid grid-cols-3 gap-2">
               <Field label="Белки, г">
                 <input value={form.protein} onChange={set('protein')} inputMode="decimal" placeholder="120" className={inputCls} autoFocus />
@@ -57,11 +55,8 @@ export default function GoalsEditor({ goals, onClose }) {
                 <input value={form.carbs} onChange={set('carbs')} inputMode="decimal" placeholder="250" className={inputCls} />
               </Field>
             </div>
-            <div className="mt-2.5 rounded-xl bg-emerald-50 px-3 py-2 text-center">
-              <div className="text-sm text-emerald-900">Калорийность цели</div>
-              <div className="text-xl font-bold text-emerald-900">
-                {kcal != null ? `${fmt0(kcal)} ккал` : '—'}
-              </div>
+            <div className="mt-2.5 rounded-xl bg-emerald-50 px-3 py-2 text-center text-sm text-emerald-900">
+              Итого: <b className="text-lg">{kcal != null ? `${fmt0(kcal)} ккал` : '—'}</b>
             </div>
           </div>
 

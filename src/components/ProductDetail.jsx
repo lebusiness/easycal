@@ -10,6 +10,7 @@ import {
 import { parseNum, round1, fmt0, kcalFromMacros, notifyError } from '../utils.js';
 import Header from './Header.jsx';
 import PortionPicker from './PortionPicker.jsx';
+import GramsWheel from './GramsWheel.jsx';
 import { IconStar } from './Icons.jsx';
 import { useBackClose } from '../navigation.js';
 
@@ -168,7 +169,7 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
       <Header title="Добавить в дневник" onBack={onBack} />
 
       <div className="px-3">
-        <section className="rounded-2xl bg-white p-4 shadow-sm">
+        <section className="rounded-2xl bg-white p-3.5 shadow-sm">
           <div className="flex items-start gap-2">
             <div className="min-w-0 flex-1">
               <h2 className="text-base font-semibold leading-snug">
@@ -204,35 +205,35 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
             </button>
           </div>
 
-          <div className="mt-3 grid grid-cols-4 gap-1.5">
-            <div className="rounded-xl bg-emerald-50 p-1.5 text-center">
-              <span className="block text-[0.6875rem] text-emerald-800">Ккал</span>
-              <span className="flex h-11 items-center justify-center text-xl font-bold text-emerald-900">
+          <div className="mt-2.5 grid grid-cols-4 gap-1.5">
+            <div className="text-center">
+              <span className="mb-1 block whitespace-nowrap text-[0.6875rem] text-emerald-800">Ккал</span>
+              <div className="flex h-[120px] items-center justify-center rounded-xl bg-emerald-50 text-xl font-bold text-emerald-900">
                 {fmt0(kcal100)}
-              </span>
+              </div>
             </div>
             {MACROS.map((m) => (
-              <label key={m.key} className="rounded-xl bg-stone-50 p-1.5 text-center">
-                <span className="block text-[0.6875rem] text-stone-500">{m.label}, г</span>
-                <input
-                  value={vals[m.key]}
-                  onChange={(e) => {
-                    setVals((v) => ({ ...v, [m.key]: e.target.value }));
-                    setPatchSaved(false);
-                  }}
-                  inputMode="decimal"
-                  placeholder="—"
-                  aria-label={`${m.label} на 100 г`}
-                  className={`mt-0.5 h-11 w-full rounded-lg border bg-white px-0.5 text-center text-xl font-bold outline-none focus:border-emerald-500 ${
-                    product[m.key] == null && !vals[m.key] ? 'border-amber-300' : 'border-stone-200'
-                  }`}
-                />
-              </label>
+              <div key={m.key} className="text-center">
+                <span className="mb-1 block whitespace-nowrap text-[0.6875rem] text-stone-500">{m.label}</span>
+                <div className={product[m.key] == null && !vals[m.key] ? 'rounded-xl ring-1 ring-amber-300' : ''}>
+                  <GramsWheel
+                    value={vals[m.key]}
+                    onChange={(v) => {
+                      setVals((prev) => ({ ...prev, [m.key]: v }));
+                      setPatchSaved(false);
+                    }}
+                    min={0}
+                    max={100}
+                    unit=""
+                    ariaLabel={`${m.label} на 100 г`}
+                  />
+                </div>
+              </div>
             ))}
           </div>
-          <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+          <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
             <span className="text-[0.6875rem] text-stone-400">
-              {anyMissing ? 'Нет части данных — заполните поля (на 100 г)' : 'Значения на 100 г, редактируемые'}
+              {anyMissing ? 'Нет части данных — выставьте БЖУ (на 100 г)' : 'На 100 г'}
             </span>
             {dirty && product.barcode && product.source !== 'mine' && (
               <button
@@ -251,9 +252,9 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
           </div>
         </section>
 
-        <section className="mt-3 rounded-2xl bg-white p-4 shadow-sm">
+        <section className="mt-2 rounded-2xl bg-white p-3.5 shadow-sm">
           {meals.length > 0 && (
-            <div className="mb-3 flex gap-1.5 overflow-x-auto pb-0.5">
+            <div className="no-scrollbar mb-2.5 flex gap-1.5 overflow-x-auto pb-0.5">
               {meals.map((m) => (
                 <button
                   key={m.id}
@@ -274,12 +275,12 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
           <PortionPicker grams={grams} onChange={setGrams} presets={presets} />
 
           {favSaved && (
-            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-              <span className="text-xs text-stone-500">Пресеты:</span>
+            <div className="no-scrollbar mt-2.5 flex items-center gap-1.5 overflow-x-auto">
+              <span className="shrink-0 text-xs text-stone-500">Пресеты:</span>
               {(presets ?? []).map((v) => (
                 <span
                   key={v}
-                  className="flex items-center gap-0.5 rounded-full bg-amber-50 py-1 pl-3 pr-1 text-sm font-medium text-amber-800"
+                  className="flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded-full bg-amber-50 py-1 pl-3 pr-1 text-sm font-medium text-amber-800"
                 >
                   {v} г
                   <button
@@ -299,7 +300,7 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
                   type="button"
                   onClick={addCurrentPreset}
                   aria-label="Добавить пресет"
-                  className="rounded-full border border-dashed border-stone-300 px-3 py-1 text-sm text-stone-500 active:border-emerald-500 active:text-emerald-700"
+                  className="shrink-0 whitespace-nowrap rounded-full border border-dashed border-stone-300 px-3 py-1 text-sm text-stone-500 active:border-emerald-500 active:text-emerald-700"
                 >
                   + {fmt0(g)} г
                 </button>
@@ -307,18 +308,18 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
             </div>
           )}
 
-          <div className="mt-3 rounded-xl bg-emerald-50 px-3.5 py-2 text-[0.9375rem] text-emerald-900">
+          <div className="mt-2.5 whitespace-nowrap rounded-xl bg-emerald-50 px-3.5 py-2 text-[0.9375rem] text-emerald-900">
             <b className="text-xl">{fmt0(portion(kcal100))}</b> ккал · Б <b>{fmt0(portion(per100.protein))}</b> · Ж{' '}
             <b>{fmt0(portion(per100.fat))}</b> · У <b>{fmt0(portion(per100.carbs))}</b>
           </div>
 
-          {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+          {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
 
           <button
             type="button"
             onClick={handleAdd}
             disabled={saving}
-            className="mt-3 w-full rounded-full bg-emerald-600 py-3.5 text-base font-semibold text-white active:bg-emerald-700 disabled:opacity-60"
+            className="mt-2.5 w-full truncate rounded-full bg-emerald-600 py-3 text-base font-semibold text-white active:bg-emerald-700 disabled:opacity-60"
           >
             Добавить в «{meal?.name ?? 'приём'}»
           </button>

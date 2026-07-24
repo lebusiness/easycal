@@ -102,6 +102,15 @@ function setInput(el, value) {
   el.dispatchEvent(new window.Event('input', { bubbles: true }));
 }
 
+// Клик по значению в барабане (рулетке) — выставляет значение без клавиатуры
+function clickWheelValue(ariaLabel, value) {
+  const wheel = window.document.querySelector(`[aria-label="${ariaLabel}"]`);
+  if (!wheel) throw new Error(`Барабан «${ariaLabel}» не найден`);
+  const btn = [...wheel.querySelectorAll('button')].find((b) => b.textContent.trim() === String(value));
+  if (!btn) throw new Error(`В барабане «${ariaLabel}» нет значения ${value}`);
+  btn.click();
+}
+
 function inputByLabel(text) {
   const label = [...window.document.querySelectorAll('label')].find((l) => l.textContent.includes(text));
   const input =
@@ -124,17 +133,17 @@ setInput(inputByLabel('Почта'), 'test@test.ru');
 setInput(inputByLabel('Пароль'), '123456');
 findButton('Создать аккаунт').click();
 await sleep(1500); // PBKDF2 + открытие БД
-if (!bodyText().includes('Итого за день')) throw new Error('После регистрации дневник не открылся');
+if (!bodyText().includes('Итого')) throw new Error('После регистрации дневник не открылся');
 console.log('✓ Регистрация: почта+пароль без писем, дневник открылся');
 
 // --- Дневник: дефолтные приёмы
-for (const text of ['Сегодня', 'Итого за день', 'Завтрак', 'Обед', 'Ужин', 'На ночь', 'Задать цели']) {
+for (const text of ['Сегодня', 'Итого', 'Завтрак', 'Обед', 'Ужин', 'На ночь', 'Цели']) {
   if (!bodyText().includes(text)) throw new Error(`На экране дневника нет текста: «${text}»`);
 }
 console.log('✓ Дневник: приёмы по умолчанию (Завтрак/Обед/Ужин/На ночь) и кнопка целей');
 
 // --- Цели БЖУ
-findButton('Задать цели').click();
+findButton('Цели').click();
 await sleep(200);
 setInput(inputByLabel('Белки'), '150');
 setInput(inputByLabel('Жиры'), '70');
@@ -169,13 +178,13 @@ findButton('+ Новый продукт').click();
 await sleep(200);
 setInput(inputByLabel('Название'), 'Творог 5%');
 setInput(inputByLabel('Описание'), 'тестовое описание');
-setInput(inputByLabel('Белки'), '17');
-setInput(inputByLabel('Жиры'), '5');
-setInput(inputByLabel('Углеводы'), '1,8');
+clickWheelValue('Белки на 100 г', 17);
+clickWheelValue('Жиры на 100 г', 4);
+clickWheelValue('Углеводы на 100 г', 4);
 setInput(inputByLabel('Штрихкод'), '4600000000001');
 await sleep(100);
-// 17*4 + 5*9 + 1.8*4 = 68+45+7.2 = 120
-if (!bodyText().includes('120 ккал')) throw new Error('Авто-ккал продукта не посчитались (нет 120)');
+// 17*4 + 4*9 + 4*4 = 68+36+16 = 120 (плитка «Ккал» обновляется сама)
+if (!bodyText().includes('120')) throw new Error('Авто-ккал продукта не посчитались (нет 120)');
 findButton('Сохранить продукт').click();
 await sleep(400);
 if (!bodyText().includes('Добавить в «На ночь»')) {

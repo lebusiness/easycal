@@ -5,8 +5,8 @@ const ITEM_H = 40; // px, высота пункта барабана
 const WHEEL_H = 120; // 3 видимых пункта
 const PAD = (WHEEL_H - ITEM_H) / 2; // отступы, чтобы крайние значения вставали по центру
 
-// Вертикальный барабан выбора граммов: крутится пальцем, значение фиксируется по центру
-export default function GramsWheel({ value, onChange, min = 1, max = 500, step = 1 }) {
+// Вертикальный барабан выбора значения: крутится пальцем, значение фиксируется по центру
+export default function GramsWheel({ value, onChange, min = 1, max = 500, step = 1, unit = 'г', ariaLabel = 'Выбор веса порции' }) {
   const values = useMemo(() => {
     const arr = [];
     for (let v = min; v <= max; v += step) arr.push(v);
@@ -61,26 +61,29 @@ export default function GramsWheel({ value, onChange, min = 1, max = 500, step =
     }
   }
 
+  // Подсвечиваем ближайший пункт: значение может быть дробным (7.7 из базы), пунктов таких нет
+  const activeIdx = nearestIndex(current);
+
   return (
     <div className="relative h-[120px] overflow-hidden rounded-xl bg-stone-50">
       <div className="pointer-events-none absolute inset-x-2 top-1/2 z-0 h-[40px] -translate-y-1/2 rounded-lg border border-emerald-200 bg-emerald-50/80" />
       <div
         ref={ref}
         onScroll={handleScroll}
-        aria-label="Выбор веса порции"
+        aria-label={ariaLabel}
         className="no-scrollbar relative z-[1] h-full snap-y snap-mandatory overflow-y-auto overscroll-contain"
         style={{ paddingTop: PAD, paddingBottom: PAD }}
       >
-        {values.map((v) => (
+        {values.map((v, i) => (
           <button
             type="button"
             key={v}
             onClick={() => onChange(String(v))}
             className={`flex h-[40px] w-full snap-center items-center justify-center transition-colors ${
-              v === current ? 'text-xl font-bold text-emerald-700' : 'text-base text-stone-400'
+              i === activeIdx ? 'text-xl font-bold text-emerald-700' : 'text-base text-stone-400'
             }`}
           >
-            {v} г
+            {unit ? `${v} ${unit}` : v}
           </button>
         ))}
       </div>

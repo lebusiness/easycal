@@ -2,7 +2,14 @@ import { useState } from 'react';
 import { addMyProduct } from '../db.js';
 import { parseNum, kcalFromMacros, fmt0 } from '../utils.js';
 import Header from './Header.jsx';
+import GramsWheel from './GramsWheel.jsx';
 import { useBackClose } from '../navigation.js';
+
+const MACROS = [
+  { key: 'protein', label: 'Белки' },
+  { key: 'fat', label: 'Жиры' },
+  { key: 'carbs', label: 'Углеводы' },
+];
 
 export default function ManualProductForm({ prefill, onBack, onSaved }) {
   useBackClose(onBack);
@@ -10,19 +17,21 @@ export default function ManualProductForm({ prefill, onBack, onSaved }) {
     name: prefill?.name ?? '',
     description: '',
     barcode: prefill?.barcode ?? '',
-    protein: '',
-    fat: '',
-    carbs: '',
+    protein: '0',
+    fat: '0',
+    carbs: '0',
   });
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
-  const p = parseNum(form.protein);
-  const f = parseNum(form.fat);
-  const c = parseNum(form.carbs);
-  const kcal = p != null || f != null || c != null ? kcalFromMacros(p, f, c) : null;
+  const macros = {
+    protein: parseNum(form.protein) ?? 0,
+    fat: parseNum(form.fat) ?? 0,
+    carbs: parseNum(form.carbs) ?? 0,
+  };
+  const kcal = kcalFromMacros(macros.protein, macros.fat, macros.carbs);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -31,24 +40,6 @@ export default function ManualProductForm({ prefill, onBack, onSaved }) {
     const name = form.name.trim();
     if (!name) {
       setError('Введите название продукта');
-      return;
-    }
-    const macros = {};
-    for (const [key, value, label] of [
-      ['protein', p, 'белков'],
-      ['fat', f, 'жиров'],
-      ['carbs', c, 'углеводов'],
-    ]) {
-      const raw = form[key].trim();
-      const n = raw ? value : 0;
-      if (n == null || n < 0) {
-        setError(`Некорректное значение ${label} — введите число не меньше 0`);
-        return;
-      }
-      macros[key] = n;
-    }
-    if (!form.protein.trim() && !form.fat.trim() && !form.carbs.trim()) {
-      setError('Заполните хотя бы одно из полей Б/Ж/У (можно нулями)');
       return;
     }
     const barcode = form.barcode.trim();
@@ -63,7 +54,7 @@ export default function ManualProductForm({ prefill, onBack, onSaved }) {
         name,
         description: form.description.trim() || null,
         barcode: barcode || null,
-        kcal100: kcalFromMacros(macros.protein, macros.fat, macros.carbs),
+        kcal100: kcal,
         protein100: macros.protein,
         fat100: macros.fat,
         carbs100: macros.carbs,
@@ -107,22 +98,28 @@ export default function ManualProductForm({ prefill, onBack, onSaved }) {
             />
           </Field>
 
-          <div className="mt-2.5 grid grid-cols-3 gap-2">
-            <Field label="Белки, г *">
-              <input value={form.protein} onChange={set('protein')} inputMode="decimal" placeholder="0" className={inputCls} />
-            </Field>
-            <Field label="Жиры, г *">
-              <input value={form.fat} onChange={set('fat')} inputMode="decimal" placeholder="0" className={inputCls} />
-            </Field>
-            <Field label="Углеводы, г *">
-              <input value={form.carbs} onChange={set('carbs')} inputMode="decimal" placeholder="0" className={inputCls} />
-            </Field>
+          <div className="mt-2.5 grid grid-cols-4 gap-1.5">
+            <div className="text-center">
+              <span className="mb-1 block whitespace-nowrap text-[0.6875rem] font-medium text-emerald-800">Ккал</span>
+              <div className="flex h-[120px] items-center justify-center rounded-xl bg-emerald-50 text-xl font-bold text-emerald-900">
+                {fmt0(kcal)}
+              </div>
+            </div>
+            {MACROS.map((m) => (
+              <div key={m.key} className="text-center">
+                <span className="mb-1 block whitespace-nowrap text-[0.6875rem] font-medium text-stone-500">{m.label}</span>
+                <GramsWheel
+                  value={form[m.key]}
+                  onChange={(v) => setForm((f2) => ({ ...f2, [m.key]: v }))}
+                  min={0}
+                  max={100}
+                  unit=""
+                  ariaLabel={`${m.label} на 100 г`}
+                />
+              </div>
+            ))}
           </div>
-
-          <div className="mt-2.5 rounded-xl bg-emerald-50 px-3 py-1.5 text-center text-sm text-emerald-900">
-            Калорийность: <b className="text-base">{kcal != null ? `${fmt0(kcal)} ккал / 100 г` : '—'}</b>{' '}
-            <span className="text-emerald-700">(считается из БЖУ автоматически)</span>
-          </div>
+          <p className="mt-1 text-[0.6875rem] text-stone-400">На 100 г продукта</p>
 
           <Field label="Штрихкод (необязательно)" className="mt-2.5">
             <input
@@ -135,8 +132,8 @@ export default function ManualProductForm({ prefill, onBack, onSaved }) {
           </Field>
 
           <p className="mt-2 text-[0.6875rem] text-stone-500">
-            Значения указываются на 100 г. Продукт появится во вкладке «Свои», будет находиться поиском
-            {form.barcode.trim() ? ' и по штрихкоду' : ''} даже офлайн, и его можно добавить в избранное.
+            Продукт появится во вкладке «Свои» и найдётся поиском
+            {form.barcode.trim() ? ' и по штрихкоду' : ''} даже офлайн.
           </p>
         </div>
 

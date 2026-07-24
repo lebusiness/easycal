@@ -67,7 +67,7 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
   }
 
   return (
-    <div className="mx-auto w-full max-w-md pb-40">
+    <div className="mx-auto w-full max-w-md pb-28">
       <header className="sticky top-0 z-10 bg-stone-100/90 px-3 pb-1.5 pt-2 backdrop-blur">
         <div className="flex items-center justify-between">
           <button
@@ -101,29 +101,29 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
             <button
               type="button"
               onClick={toggleTotalsMode}
-              className="flex items-center gap-1 text-xs font-medium text-stone-500 active:text-stone-700"
+              className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-stone-500 active:text-stone-700"
             >
-              {totalsMode === 'eaten' ? 'Итого за день' : 'Осталось до цели'}
+              {totalsMode === 'eaten' ? 'Итого' : 'Осталось'}
               <IconSwap className="h-3.5 w-3.5 text-stone-400" />
             </button>
           ) : (
-            <span className="text-xs font-medium text-stone-500">Итого за день</span>
+            <span className="whitespace-nowrap text-xs font-medium text-stone-500">Итого</span>
           )}
-          <span className="flex gap-3">
-            <button type="button" onClick={onHistory} className="py-0.5 text-xs font-semibold text-emerald-700 active:text-emerald-800">
+          <span className="flex shrink-0 gap-3">
+            <button type="button" onClick={onHistory} className="whitespace-nowrap py-0.5 text-xs font-semibold text-emerald-700 active:text-emerald-800">
               История
             </button>
             <button
               type="button"
               onClick={() => setShowGoals(true)}
-              className="py-0.5 text-xs font-semibold text-emerald-700 active:text-emerald-800"
+              className="whitespace-nowrap py-0.5 text-xs font-semibold text-emerald-700 active:text-emerald-800"
             >
-              {goals ? 'Цели' : 'Задать цели'}
+              Цели
             </button>
             <button
               type="button"
               onClick={() => setShowMeals(true)}
-              className="py-0.5 text-xs font-semibold text-emerald-700 active:text-emerald-800"
+              className="whitespace-nowrap py-0.5 text-xs font-semibold text-emerald-700 active:text-emerald-800"
             >
               Приёмы
             </button>
@@ -271,7 +271,7 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
         </p>
       )}
 
-      <div className="fixed inset-x-0 bottom-0 z-10 mx-auto flex w-full max-w-md gap-2 bg-gradient-to-t from-stone-100 via-stone-100/90 to-transparent px-3 pb-[calc(4rem+env(safe-area-inset-bottom))] pt-4">
+      <div className="fixed inset-x-0 bottom-0 z-10 mx-auto flex w-full max-w-md gap-2 bg-gradient-to-t from-stone-100 via-stone-100/90 to-transparent px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3">
         <div className="flex min-w-0 flex-1 overflow-hidden rounded-full bg-emerald-600 shadow-lg shadow-emerald-600/25">
           <button
             type="button"

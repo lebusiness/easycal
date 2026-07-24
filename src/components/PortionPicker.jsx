@@ -58,13 +58,13 @@ export default function PortionPicker({ grams, onChange, presets }) {
         />
       )}
 
-      <div className="mt-2 flex flex-wrap gap-1.5">
+      <div className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto">
         {(presets?.length ? presets : GRAM_PRESETS).map((v) => (
           <button
             key={v}
             type="button"
             onClick={() => onChange(String(v))}
-            className={`rounded-full border px-4 py-1.5 text-sm font-medium active:bg-stone-100 ${
+            className={`shrink-0 whitespace-nowrap rounded-full border px-4 py-1.5 text-sm font-medium active:bg-stone-100 ${
               g === v
                 ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
                 : 'border-stone-200 text-stone-600'
