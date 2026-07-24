@@ -3,9 +3,11 @@ import { updateDiaryEntry, deleteDiaryEntry, getFavoriteFor } from '../db.js';
 import { parseNum, round1, fmt0, formatTime, notifyError } from '../utils.js';
 import Header from './Header.jsx';
 import PortionPicker from './PortionPicker.jsx';
+import { useBackClose } from '../navigation.js';
 
 // Редактирование записи дневника: граммы, приём, время добавления
 export default function EntryEditor({ entry, meals, onClose }) {
+  useBackClose(onClose);
   const [grams, setGrams] = useState(String(entry.grams));
   const [mealId, setMealId] = useState(entry.mealId);
   const [time, setTime] = useState(() => formatTime(entry.addedAt) ?? '');
@@ -133,7 +135,7 @@ export default function EntryEditor({ entry, meals, onClose }) {
               />
             </label>
 
-            <div className="mt-3 rounded-xl bg-emerald-50 px-3.5 py-2 text-[15px] text-emerald-900">
+            <div className="mt-3 rounded-xl bg-emerald-50 px-3.5 py-2 text-[0.9375rem] text-emerald-900">
               <b>{fmt0(portion(per100.kcal))}</b> ккал · Б <b>{fmt0(portion(per100.protein))}</b> · Ж{' '}
               <b>{fmt0(portion(per100.fat))}</b> · У <b>{fmt0(portion(per100.carbs))}</b>
             </div>
@@ -143,7 +145,7 @@ export default function EntryEditor({ entry, meals, onClose }) {
             <button
               type="button"
               onClick={handleSave}
-              className="mt-3 w-full rounded-full bg-emerald-600 py-3 text-[15px] font-semibold text-white active:bg-emerald-700"
+              className="mt-3 w-full rounded-full bg-emerald-600 py-3 text-[0.9375rem] font-semibold text-white active:bg-emerald-700"
             >
               Сохранить
             </button>

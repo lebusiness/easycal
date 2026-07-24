@@ -104,6 +104,15 @@ export function IconStar({ className = 'h-5 w-5', filled = false }) {
   );
 }
 
+export function IconSwap({ className = 'h-4 w-4' }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} {...stroke} aria-hidden="true">
+      <path d="M4 9h13m0 0-3.5-3.5M17 9l-3.5 3.5" />
+      <path d="M20 15H7m0 0 3.5-3.5M7 15l3.5 3.5" />
+    </svg>
+  );
+}
+
 export function IconEye({ className = 'h-5 w-5' }) {
   return (
     <svg viewBox="0 0 24 24" className={className} {...stroke} aria-hidden="true">

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { parseNum } from '../utils.js';
 
-const ITEM_H = 36; // px, высота пункта барабана
-const WHEEL_H = 108; // 3 видимых пункта
+const ITEM_H = 40; // px, высота пункта барабана
+const WHEEL_H = 120; // 3 видимых пункта
 const PAD = (WHEEL_H - ITEM_H) / 2; // отступы, чтобы крайние значения вставали по центру
 
 // Вертикальный барабан выбора граммов: крутится пальцем, значение фиксируется по центру
@@ -62,8 +62,8 @@ export default function GramsWheel({ value, onChange, min = 1, max = 500, step =
   }
 
   return (
-    <div className="relative h-[108px] overflow-hidden rounded-xl bg-stone-50">
-      <div className="pointer-events-none absolute inset-x-2 top-1/2 z-0 h-[36px] -translate-y-1/2 rounded-lg border border-emerald-200 bg-emerald-50/80" />
+    <div className="relative h-[120px] overflow-hidden rounded-xl bg-stone-50">
+      <div className="pointer-events-none absolute inset-x-2 top-1/2 z-0 h-[40px] -translate-y-1/2 rounded-lg border border-emerald-200 bg-emerald-50/80" />
       <div
         ref={ref}
         onScroll={handleScroll}
@@ -76,7 +76,7 @@ export default function GramsWheel({ value, onChange, min = 1, max = 500, step =
             type="button"
             key={v}
             onClick={() => onChange(String(v))}
-            className={`flex h-[36px] w-full snap-center items-center justify-center transition-colors ${
+            className={`flex h-[40px] w-full snap-center items-center justify-center transition-colors ${
               v === current ? 'text-xl font-bold text-emerald-700' : 'text-base text-stone-400'
             }`}
           >

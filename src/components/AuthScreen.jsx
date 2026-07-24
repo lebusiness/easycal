@@ -73,7 +73,7 @@ export default function AuthScreen({ onAuthed }) {
               placeholder="you@example.com"
               autoComplete="email"
               autoFocus
-              className="w-full rounded-xl border border-stone-200 bg-stone-50 px-3.5 py-2.5 text-[15px] outline-none placeholder:text-stone-400 focus:border-emerald-500"
+              className="w-full rounded-xl border border-stone-200 bg-stone-50 px-3.5 py-2.5 text-[0.9375rem] outline-none placeholder:text-stone-400 focus:border-emerald-500"
             />
           </label>
           <label className="mt-3 block">
@@ -85,7 +85,7 @@ export default function AuthScreen({ onAuthed }) {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Минимум 6 символов"
                 autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
-                className="w-full rounded-xl border border-stone-200 bg-stone-50 py-2.5 pl-3.5 pr-11 text-[15px] outline-none placeholder:text-stone-400 focus:border-emerald-500"
+                className="w-full rounded-xl border border-stone-200 bg-stone-50 py-2.5 pl-3.5 pr-11 text-[0.9375rem] outline-none placeholder:text-stone-400 focus:border-emerald-500"
               />
               <button
                 type="button"
@@ -112,9 +112,8 @@ export default function AuthScreen({ onAuthed }) {
       </div>
 
       <p className="mt-4 text-center text-xs leading-relaxed text-stone-400">
-        Без писем и подтверждений. Аккаунт и данные хранятся только на этом устройстве, у каждого
-        аккаунта — свой дневник.
-        {mode === 'register' && ' Записи, сделанные до регистрации, привяжутся к первому аккаунту.'}
+        Без писем и подтверждений. Данные хранятся на сервере под вашим аккаунтом — можно входить с
+        любого устройства.
       </p>
     </div>
   );

@@ -11,6 +11,7 @@ import { parseNum, round1, fmt0, kcalFromMacros, notifyError } from '../utils.js
 import Header from './Header.jsx';
 import PortionPicker from './PortionPicker.jsx';
 import { IconStar } from './Icons.jsx';
+import { useBackClose } from '../navigation.js';
 
 const MACROS = [
   { key: 'protein100', label: 'Белки' },
@@ -19,6 +20,7 @@ const MACROS = [
 ];
 
 export default function ProductDetail({ product, date, meal, meals, onMealChange, onBack, onAdded }) {
+  useBackClose(onBack);
   // Значения из OFF бывают вида 7.699999809 — приводим к одному знаку
   const [vals, setVals] = useState(() =>
     Object.fromEntries(
@@ -172,12 +174,12 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
               <h2 className="text-base font-semibold leading-snug">
                 {product.name}
                 {product.source === 'mine' && (
-                  <span className="ml-1.5 align-middle rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-800">
+                  <span className="ml-1.5 align-middle rounded-full bg-emerald-100 px-2 py-0.5 text-[0.6875rem] font-medium text-emerald-800">
                     Мой
                   </span>
                 )}
                 {(product.patched || patchSaved) && (
-                  <span className="ml-1.5 align-middle rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-800">
+                  <span className="ml-1.5 align-middle rounded-full bg-violet-100 px-2 py-0.5 text-[0.6875rem] font-medium text-violet-800">
                     изменён
                   </span>
                 )}
@@ -204,14 +206,14 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
 
           <div className="mt-3 grid grid-cols-4 gap-1.5">
             <div className="rounded-xl bg-emerald-50 p-1.5 text-center">
-              <span className="block text-[11px] text-emerald-800">Ккал</span>
+              <span className="block text-[0.6875rem] text-emerald-800">Ккал</span>
               <span className="flex h-11 items-center justify-center text-xl font-bold text-emerald-900">
                 {fmt0(kcal100)}
               </span>
             </div>
             {MACROS.map((m) => (
               <label key={m.key} className="rounded-xl bg-stone-50 p-1.5 text-center">
-                <span className="block text-[11px] text-stone-500">{m.label}, г</span>
+                <span className="block text-[0.6875rem] text-stone-500">{m.label}, г</span>
                 <input
                   value={vals[m.key]}
                   onChange={(e) => {
@@ -229,7 +231,7 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
             ))}
           </div>
           <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-            <span className="text-[11px] text-stone-400">
+            <span className="text-[0.6875rem] text-stone-400">
               {anyMissing ? 'Нет части данных — заполните поля (на 100 г)' : 'Значения на 100 г, редактируемые'}
             </span>
             {dirty && product.barcode && product.source !== 'mine' && (
@@ -305,7 +307,7 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
             </div>
           )}
 
-          <div className="mt-3 rounded-xl bg-emerald-50 px-3.5 py-2 text-[15px] text-emerald-900">
+          <div className="mt-3 rounded-xl bg-emerald-50 px-3.5 py-2 text-[0.9375rem] text-emerald-900">
             <b className="text-xl">{fmt0(portion(kcal100))}</b> ккал · Б <b>{fmt0(portion(per100.protein))}</b> · Ж{' '}
             <b>{fmt0(portion(per100.fat))}</b> · У <b>{fmt0(portion(per100.carbs))}</b>
           </div>

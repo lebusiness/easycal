@@ -7,11 +7,13 @@ import { Spinner } from './components/Icons.jsx';
 import { openUserDb, closeUserDb, pullSnapshot } from './db.js';
 import { getSessionUser, clearSession } from './auth.js';
 import { toISODate } from './utils.js';
+import { useEdgeSwipeBack } from './navigation.js';
 
 export default function App() {
   const [user, setUser] = useState(undefined); // undefined — проверяем сессию, null — не вошёл
   const [date, setDate] = useState(() => toISODate(new Date()));
   const [screen, setScreen] = useState({ name: 'diary' }); // diary | add | history
+  useEdgeSwipeBack();
 
   useEffect(() => {
     getSessionUser()
@@ -57,6 +59,7 @@ export default function App() {
           date={date}
           initialMealId={screen.mealId}
           autoScan={screen.scan}
+          autoFocusSearch={screen.focus}
           onClose={() => setScreen({ name: 'diary' })}
         />
       ) : screen.name === 'history' ? (
@@ -65,7 +68,7 @@ export default function App() {
         <DiaryScreen
           date={date}
           onDateChange={setDate}
-          onAdd={(mealId) => setScreen({ name: 'add', mealId })}
+          onAdd={(mealId, focus) => setScreen({ name: 'add', mealId, focus: !!focus })}
           onScan={() => setScreen({ name: 'add', mealId: null, scan: true })}
           onHistory={() => setScreen({ name: 'history' })}
           user={user}

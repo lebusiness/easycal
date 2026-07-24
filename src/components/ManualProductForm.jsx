@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { addMyProduct } from '../db.js';
 import { parseNum, kcalFromMacros, fmt0 } from '../utils.js';
 import Header from './Header.jsx';
+import { useBackClose } from '../navigation.js';
 
 export default function ManualProductForm({ prefill, onBack, onSaved }) {
+  useBackClose(onBack);
   const [form, setForm] = useState({
     name: prefill?.name ?? '',
     description: '',
@@ -132,7 +134,7 @@ export default function ManualProductForm({ prefill, onBack, onSaved }) {
             />
           </Field>
 
-          <p className="mt-2 text-[11px] text-stone-500">
+          <p className="mt-2 text-[0.6875rem] text-stone-500">
             Значения указываются на 100 г. Продукт появится во вкладке «Свои», будет находиться поиском
             {form.barcode.trim() ? ' и по штрихкоду' : ''} даже офлайн, и его можно добавить в избранное.
           </p>
@@ -153,7 +155,7 @@ export default function ManualProductForm({ prefill, onBack, onSaved }) {
 }
 
 const inputCls =
-  'w-full rounded-xl border border-stone-200 bg-stone-50 px-3.5 py-2.5 text-[15px] outline-none placeholder:text-stone-400 focus:border-emerald-500';
+  'w-full rounded-xl border border-stone-200 bg-stone-50 px-3.5 py-2.5 text-[0.9375rem] outline-none placeholder:text-stone-400 focus:border-emerald-500';
 
 function Field({ label, children, className = '' }) {
   return (

@@ -15,6 +15,8 @@ import {
   guessMeal,
 } from '../db.js';
 import { searchOpenFoodFacts, fetchProductByBarcode } from '../api.js';
+import { searchBasicFoods } from '../basicFoods.js';
+import { useBackClose } from '../navigation.js';
 import { fmt0 } from '../utils.js';
 import Header from './Header.jsx';
 import ProductDetail from './ProductDetail.jsx';
@@ -30,7 +32,7 @@ const TABS = [
   { key: 'mine', label: 'Свои' },
 ];
 
-export default function AddFoodScreen({ date, initialMealId, autoScan, onClose }) {
+export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocusSearch, onClose }) {
   const meals = useLiveQuery(() => db.meals.orderBy('order').toArray(), []);
 
   const [view, setView] = useState('search'); // search | detail | manual
@@ -49,6 +51,8 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, onClose }
   const [selected, setSelected] = useState(null);
   const [manualPrefill, setManualPrefill] = useState(null);
   const [tabRefresh, setTabRefresh] = useState(0);
+
+  useBackClose(onClose);
 
   // Выбранный приём: переданный с кнопки «+» приёма или угаданный по времени суток
   const currentMeal =
@@ -165,9 +169,16 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, onClose }
   // Дубликаты OFF-результатов, уже сохранённые локально (по штрихкоду), скрываем
   const localBarcodes = new Set(localResults.map((p) => p.barcode).filter(Boolean));
   const off = offResults.filter((p) => !p.barcode || !localBarcodes.has(p.barcode));
+  // Справочник базовых продуктов (варёные крупы, мясо, овощи…) — локально и мгновенно
+  const basicResults = q.length >= 2 ? searchBasicFoods(q) : [];
   const nothingFound =
-    searched && !searching && !searchError && localResults.length === 0 && off.length === 0;
-  const hasAnyResults = localResults.length > 0 || off.length > 0;
+    searched &&
+    !searching &&
+    !searchError &&
+    localResults.length === 0 &&
+    basicResults.length === 0 &&
+    off.length === 0;
+  const hasAnyResults = localResults.length > 0 || basicResults.length > 0 || off.length > 0;
 
   return (
     <div className="mx-auto w-full max-w-md pb-8">
@@ -207,8 +218,9 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, onClose }
               onChange={(e) => setQuery(e.target.value)}
               type="search"
               enterKeyHint="search"
+              autoFocus={autoFocusSearch}
               placeholder="Поиск по всем продуктам"
-              className="w-full rounded-xl border border-stone-200 bg-white py-3 pl-10 pr-3 text-[15px] shadow-sm outline-none placeholder:text-stone-400 focus:border-emerald-500"
+              className="w-full rounded-xl border border-stone-200 bg-white py-3 pl-10 pr-3 text-[0.9375rem] shadow-sm outline-none placeholder:text-stone-400 focus:border-emerald-500"
             />
           </form>
           <button
@@ -267,6 +279,14 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, onClose }
               <Section title="Свои и избранное">
                 {localResults.map((p) => (
                   <ProductRow key={`local-${p.favId ?? `m${p.id}`}`} product={p} onSelect={openDetail} />
+                ))}
+              </Section>
+            )}
+
+            {basicResults.length > 0 && (
+              <Section title="Справочник">
+                {basicResults.map((p) => (
+                  <ProductRow key={`basic-${p.name}`} product={p} onSelect={openDetail} />
                 ))}
               </Section>
             )}
@@ -470,17 +490,17 @@ function ProductRow({ product, topMeal, showStar, onToggleFavorite, onSelect }) 
         className="flex min-w-0 flex-1 items-center gap-2 py-2.5 text-left active:opacity-70"
       >
         {product.source === 'mine' && (
-          <span className="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800">
+          <span className="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[0.625rem] font-medium text-emerald-800">
             Мой
           </span>
         )}
         {product.patched && (
-          <span className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-800">
+          <span className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[0.625rem] font-medium text-violet-800">
             изм.
           </span>
         )}
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[15px] leading-snug">
+          <span className="block truncate text-[0.9375rem] leading-snug">
             {product.name}
             {meta && <span className="text-stone-400"> · {meta}</span>}
           </span>
@@ -490,8 +510,8 @@ function ProductRow({ product, topMeal, showStar, onToggleFavorite, onSelect }) 
           </span>
         </span>
         <span className="shrink-0 text-right">
-          <span className="block text-[15px] font-semibold leading-tight">{fmt0(product.kcal100)}</span>
-          <span className="block text-[10px] leading-tight text-stone-400">ккал/100г</span>
+          <span className="block text-[0.9375rem] font-semibold leading-tight">{fmt0(product.kcal100)}</span>
+          <span className="block text-[0.625rem] leading-tight text-stone-400">ккал/100г</span>
         </span>
       </button>
       {showStar && (

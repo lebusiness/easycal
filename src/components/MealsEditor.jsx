@@ -4,8 +4,10 @@ import { db, addMeal, renameMeal, moveMeal, deleteMeal } from '../db.js';
 import { notifyError } from '../utils.js';
 import Header from './Header.jsx';
 import { IconArrowUp, IconArrowDown, IconTrash } from './Icons.jsx';
+import { useBackClose } from '../navigation.js';
 
 export default function MealsEditor({ onClose }) {
+  useBackClose(onClose);
   const meals = useLiveQuery(() => db.meals.orderBy('order').toArray(), []);
   const [newName, setNewName] = useState('');
 
@@ -58,7 +60,7 @@ export default function MealsEditor({ onClose }) {
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder="Новый приём (например, Перекус)"
-              className="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-[15px] shadow-sm outline-none placeholder:text-stone-400 focus:border-emerald-500"
+              className="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-[0.9375rem] shadow-sm outline-none placeholder:text-stone-400 focus:border-emerald-500"
             />
             <button
               type="submit"
@@ -72,7 +74,7 @@ export default function MealsEditor({ onClose }) {
           <button
             type="button"
             onClick={onClose}
-            className="mt-4 w-full rounded-full bg-emerald-600 py-3 text-[15px] font-semibold text-white active:bg-emerald-700"
+            className="mt-4 w-full rounded-full bg-emerald-600 py-3 text-[0.9375rem] font-semibold text-white active:bg-emerald-700"
           >
             Готово
           </button>
@@ -98,7 +100,7 @@ function MealRow({ meal, isFirst, isLast, canDelete, onDelete }) {
         onChange={(e) => setName(e.target.value)}
         onBlur={commitName}
         aria-label="Название приёма"
-        className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[15px] font-medium outline-none focus:bg-stone-50"
+        className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[0.9375rem] font-medium outline-none focus:bg-stone-50"
       />
       <button
         type="button"

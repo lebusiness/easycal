@@ -2,10 +2,14 @@
 
 html {
   -webkit-tap-highlight-color: transparent;
+  /* База 20px (+25%): Tailwind считает размеры в rem, масштабируется всё пропорционально */
+  font-size: 20px;
 }
 
 body {
   background-color: #f5f5f4;
+  /* Убирает зум по двойному тапу, обычные жесты работают */
+  touch-action: manipulation;
 }
 
 /* Барабан выбора граммов — прячем скроллбар */

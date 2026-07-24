@@ -5,7 +5,7 @@ import { toISODate, formatDateLabel, formatDateFull, shiftDate, fmt0, fmt1, form
 import GoalsEditor from './GoalsEditor.jsx';
 import MealsEditor from './MealsEditor.jsx';
 import EntryEditor from './EntryEditor.jsx';
-import { IconChevronLeft, IconChevronRight, IconChevronDown, IconTrash, IconPlus, IconBarcode } from './Icons.jsx';
+import { IconChevronLeft, IconChevronRight, IconChevronDown, IconTrash, IconPlus, IconBarcode, IconSearch, IconSwap } from './Icons.jsx';
 
 export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHistory, user, onLogout }) {
   const meals = useLiveQuery(() => db.meals.orderBy('order').toArray(), []);
@@ -17,6 +17,24 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
   const [showGoals, setShowGoals] = useState(false);
   const [showMeals, setShowMeals] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
+  // Режим карточки итогов: сколько съедено или сколько осталось до цели
+  const [totalsMode, setTotalsMode] = useState(() => {
+    try {
+      return localStorage.getItem('totalsMode') || 'eaten';
+    } catch {
+      return 'eaten';
+    }
+  });
+
+  function toggleTotalsMode() {
+    const next = totalsMode === 'eaten' ? 'left' : 'eaten';
+    setTotalsMode(next);
+    try {
+      localStorage.setItem('totalsMode', next);
+    } catch {
+      /* приватный режим */
+    }
+  }
 
   const isToday = date === toISODate(new Date());
   const list = entries ?? [];
@@ -49,7 +67,7 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
   }
 
   return (
-    <div className="mx-auto w-full max-w-md pb-20">
+    <div className="mx-auto w-full max-w-md pb-40">
       <header className="sticky top-0 z-10 bg-stone-100/90 px-3 pb-1.5 pt-2 backdrop-blur">
         <div className="flex items-center justify-between">
           <button
@@ -61,10 +79,10 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
             <IconChevronLeft className="h-5 w-5" />
           </button>
           <button type="button" onClick={() => onDateChange(toISODate(new Date()))} className="min-w-0 truncate px-2 py-1">
-            <span className={`text-[15px] font-semibold ${isToday ? 'text-emerald-600' : ''}`}>
+            <span className={`text-[0.9375rem] font-semibold ${isToday ? 'text-emerald-600' : ''}`}>
               {formatDateLabel(date)}
             </span>
-            <span className="ml-1.5 text-[11px] text-stone-400">{formatDateFull(date)}</span>
+            <span className="ml-1.5 text-[0.6875rem] text-stone-400">{formatDateFull(date)}</span>
           </button>
           <button
             type="button"
@@ -79,7 +97,18 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
 
       <section className="mx-3 rounded-2xl bg-white px-4 py-3 shadow-sm">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-stone-500">Итого за день</span>
+          {goals ? (
+            <button
+              type="button"
+              onClick={toggleTotalsMode}
+              className="flex items-center gap-1 text-xs font-medium text-stone-500 active:text-stone-700"
+            >
+              {totalsMode === 'eaten' ? 'Итого за день' : 'Осталось до цели'}
+              <IconSwap className="h-3.5 w-3.5 text-stone-400" />
+            </button>
+          ) : (
+            <span className="text-xs font-medium text-stone-500">Итого за день</span>
+          )}
           <span className="flex gap-3">
             <button type="button" onClick={onHistory} className="py-0.5 text-xs font-semibold text-emerald-700 active:text-emerald-800">
               История
@@ -102,24 +131,38 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
         </div>
 
         {goals ? (
-          <div className="mt-1.5 space-y-2">
-            <div>
-              <div className="flex items-baseline justify-between text-[15px] leading-tight">
-                <span className="font-semibold">
-                  {fmt0(totals.kcal)}
-                  <span className="font-normal text-stone-400">
-                    {' '}/ {fmt0(kcalFromMacros(goals.protein, goals.fat, goals.carbs))} ккал
-                  </span>
-                </span>
+          (() => {
+            const goalKcal = kcalFromMacros(goals.protein, goals.fat, goals.carbs);
+            const kcalLeft = goalKcal - totals.kcal;
+            return (
+              <div className="mt-1.5 space-y-2">
+                <div>
+                  <div className="flex items-baseline justify-between text-[0.9375rem] leading-tight">
+                    {totalsMode === 'eaten' ? (
+                      <span className="font-semibold">
+                        {fmt0(totals.kcal)}
+                        <span className="font-normal text-stone-400"> / {fmt0(goalKcal)} ккал</span>
+                      </span>
+                    ) : (
+                      <span className="font-semibold">
+                        {fmt0(Math.max(0, kcalLeft))}
+                        <span className="font-normal text-stone-400"> ккал осталось</span>
+                        {kcalLeft < 0 && (
+                          <span className="font-semibold text-red-600"> · перебор {fmt0(-kcalLeft)}</span>
+                        )}
+                      </span>
+                    )}
+                  </div>
+                  <Bar value={totals.kcal} goal={goalKcal} color="bg-emerald-500" h="h-1.5" />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <MiniProgress label="Б" value={totals.protein} goal={goals.protein} color="bg-sky-500" mode={totalsMode} />
+                  <MiniProgress label="Ж" value={totals.fat} goal={goals.fat} color="bg-amber-500" mode={totalsMode} />
+                  <MiniProgress label="У" value={totals.carbs} goal={goals.carbs} color="bg-rose-500" mode={totalsMode} />
+                </div>
               </div>
-              <Bar value={totals.kcal} goal={kcalFromMacros(goals.protein, goals.fat, goals.carbs)} color="bg-emerald-500" h="h-1.5" />
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <MiniProgress label="Б" value={totals.protein} goal={goals.protein} color="bg-sky-500" />
-              <MiniProgress label="Ж" value={totals.fat} goal={goals.fat} color="bg-amber-500" />
-              <MiniProgress label="У" value={totals.carbs} goal={goals.carbs} color="bg-rose-500" />
-            </div>
-          </div>
+            );
+          })()
         ) : (
           <div className="mt-0.5 flex flex-wrap items-baseline justify-between gap-x-3">
             <span className="text-xl font-bold tracking-tight">
@@ -149,19 +192,31 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
                   <IconChevronDown
                     className={`h-4 w-4 shrink-0 text-stone-400 transition-transform ${isCollapsed ? '-rotate-90' : ''}`}
                   />
-                  <span className="truncate text-[15px] font-semibold">{meal.name}</span>
-                  <span className="ml-auto shrink-0 pl-2 text-xs text-stone-500">
-                    {mealEntries.length > 0 ? `${fmt0(mealKcal)} ккал` : '—'}
-                  </span>
+                  <span className="truncate text-[0.9375rem] font-semibold">{meal.name}</span>
+                  {mealEntries.length > 0 && (
+                    <span className="ml-auto shrink-0 pl-2 pr-1 text-xs text-stone-500">
+                      {fmt0(mealKcal)} ккал
+                    </span>
+                  )}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => onAdd(meal.id)}
-                  aria-label={`Добавить в «${meal.name}»`}
-                  className="-my-0.5 shrink-0 rounded-full bg-emerald-50 p-2.5 text-emerald-700 active:bg-emerald-100"
-                >
-                  <IconPlus className="h-5 w-5" />
-                </button>
+                <div className="-my-0.5 flex shrink-0 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onAdd(meal.id, true)}
+                    aria-label={`Найти и добавить в «${meal.name}»`}
+                    className="rounded-full bg-emerald-50 p-2.5 text-emerald-700 active:bg-emerald-100"
+                  >
+                    <IconSearch className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onAdd(meal.id)}
+                    aria-label={`Добавить в «${meal.name}»`}
+                    className="rounded-full bg-emerald-50 p-2.5 text-emerald-700 active:bg-emerald-100"
+                  >
+                    <IconPlus className="h-5 w-5" />
+                  </button>
+                </div>
               </div>
 
               {!isCollapsed && mealEntries.length > 0 && (
@@ -175,10 +230,10 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
                       >
                         <span className="min-w-0 flex-1 truncate text-sm leading-snug">{e.name}</span>
                         {formatTime(e.addedAt) && (
-                          <span className="shrink-0 text-[11px] text-stone-400">{formatTime(e.addedAt)}</span>
+                          <span className="shrink-0 text-[0.6875rem] text-stone-400">{formatTime(e.addedAt)}</span>
                         )}
                         <span className="shrink-0 text-xs text-stone-500">{fmt1(e.grams)} г</span>
-                        <span className="shrink-0 text-[15px] font-semibold">{fmt0(e.kcal)}</span>
+                        <span className="shrink-0 text-[0.9375rem] font-semibold">{fmt0(e.kcal)}</span>
                       </button>
                       <button
                         type="button"
@@ -186,7 +241,7 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
                         aria-label={`Удалить «${e.name}»`}
                         className="shrink-0 rounded-full p-2 text-stone-300 active:bg-red-50 active:text-red-600"
                       >
-                        <IconTrash className="h-[18px] w-[18px]" />
+                        <IconTrash className="h-[1.125rem] w-[1.125rem]" />
                       </button>
                     </li>
                   ))}
@@ -198,13 +253,13 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
       </div>
 
       {entries !== undefined && list.length === 0 && (
-        <p className="mx-3 mt-2 text-center text-[11px] text-stone-400">
+        <p className="mx-3 mt-2 text-center text-[0.6875rem] text-stone-400">
           Записей пока нет — добавьте еду кнопкой «+» у приёма пищи
         </p>
       )}
 
       {user && (
-        <p className="mx-3 mt-4 text-center text-[11px] text-stone-400">
+        <p className="mx-3 mt-4 text-center text-[0.6875rem] text-stone-400">
           {user.email} ·{' '}
           <button
             type="button"
@@ -216,14 +271,24 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
         </p>
       )}
 
-      <div className="fixed inset-x-0 bottom-0 z-10 mx-auto flex w-full max-w-md gap-2 bg-gradient-to-t from-stone-100 via-stone-100/90 to-transparent px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-4">
-        <button
-          type="button"
-          onClick={() => onAdd(null)}
-          className="min-w-0 flex-1 rounded-full bg-emerald-600 py-3.5 text-base font-semibold text-white shadow-lg shadow-emerald-600/25 active:bg-emerald-700"
-        >
-          + Добавить еду
-        </button>
+      <div className="fixed inset-x-0 bottom-0 z-10 mx-auto flex w-full max-w-md gap-2 bg-gradient-to-t from-stone-100 via-stone-100/90 to-transparent px-3 pb-[calc(4rem+env(safe-area-inset-bottom))] pt-4">
+        <div className="flex min-w-0 flex-1 overflow-hidden rounded-full bg-emerald-600 shadow-lg shadow-emerald-600/25">
+          <button
+            type="button"
+            onClick={() => onAdd(null)}
+            className="min-w-0 flex-1 py-3.5 text-base font-semibold text-white active:bg-emerald-700"
+          >
+            + Добавить еду
+          </button>
+          <button
+            type="button"
+            onClick={() => onAdd(null, true)}
+            aria-label="Добавить через поиск"
+            className="border-l border-emerald-500/60 px-5 text-white active:bg-emerald-700"
+          >
+            <IconSearch className="h-6 w-6" />
+          </button>
+        </div>
         <button
           type="button"
           onClick={onScan}
@@ -256,16 +321,24 @@ function Bar({ value, goal, color, h = 'h-1' }) {
   );
 }
 
-function MiniProgress({ label, value, goal, color }) {
+function MiniProgress({ label, value, goal, color, mode = 'eaten' }) {
   const over = goal > 0 && value > goal;
+  const left = goal - value;
   return (
     <div>
-      <div className="flex items-baseline justify-between text-[11px] leading-tight">
+      <div className="flex items-baseline justify-between text-[0.6875rem] leading-tight">
         <span className="text-stone-500">{label}</span>
-        <span className={over ? 'font-semibold text-red-600' : 'font-semibold'}>
-          {fmt0(value)}
-          <span className="font-normal text-stone-400">/{fmt0(goal)}</span>
-        </span>
+        {mode === 'eaten' ? (
+          <span className={over ? 'font-semibold text-red-600' : 'font-semibold'}>
+            {fmt0(value)}
+            <span className="font-normal text-stone-400">/{fmt0(goal)}</span>
+          </span>
+        ) : (
+          <span className={over ? 'font-semibold text-red-600' : 'font-semibold'}>
+            {over ? `+${fmt0(-left)}` : fmt0(left)}
+            <span className="font-normal text-stone-400"> {over ? 'сверх' : 'ост.'}</span>
+          </span>
+        )}
       </div>
       <Bar value={value} goal={goal} color={color} />
     </div>

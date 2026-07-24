@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { IconClose, Spinner } from './Icons.jsx';
+import { useBackClose } from '../navigation.js';
 
 const REGION_ID = 'barcode-scanner-region';
 
@@ -35,6 +36,7 @@ async function safeStop(scanner) {
 }
 
 export default function BarcodeScanner({ onScan, onClose }) {
+  useBackClose(onClose);
   const [starting, setStarting] = useState(true);
   const [error, setError] = useState(null);
   const [digits, setDigits] = useState('');

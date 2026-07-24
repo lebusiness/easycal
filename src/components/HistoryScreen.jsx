@@ -4,6 +4,7 @@ import { db } from '../db.js';
 import { api } from '../api-client.js';
 import { toISODate, shiftDate, fmt0, kcalFromMacros, notifyError } from '../utils.js';
 import Header from './Header.jsx';
+import { useBackClose } from '../navigation.js';
 
 function downloadFile(filename, content, type) {
   const blob = new Blob([content], { type });
@@ -84,6 +85,7 @@ function niceStep(raw) {
 const shortKcal = (v) => (v >= 1000 ? `${v / 1000}к` : String(v));
 
 export default function HistoryScreen({ onBack }) {
+  useBackClose(onBack);
   const [days, setDays] = useState(14);
   const today = toISODate(new Date());
   const start = shiftDate(today, -(days - 1));
@@ -282,7 +284,7 @@ export default function HistoryScreen({ onBack }) {
             Полный бэкап (JSON)
           </button>
         </div>
-        <p className="mt-1.5 px-1 text-center text-[11px] text-stone-400">
+        <p className="mt-1.5 px-1 text-center text-[0.6875rem] text-stone-400">
           CSV открывается в Excel и Google Таблицах — итоги ккал и БЖУ за каждый день. JSON — полная
           копия всех данных аккаунта.
         </p>

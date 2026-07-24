@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { saveGoals, clearGoals } from '../db.js';
 import { parseNum, kcalFromMacros, fmt0 } from '../utils.js';
 import Header from './Header.jsx';
+import { useBackClose } from '../navigation.js';
 
 export default function GoalsEditor({ goals, onClose }) {
+  useBackClose(onClose);
   const [form, setForm] = useState({
     protein: goals?.protein != null ? String(goals.protein) : '',
     fat: goals?.fat != null ? String(goals.fat) : '',
