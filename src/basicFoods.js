@@ -2,6 +2,17 @@
 // (там только товары с этикеток — «гречка варёная» этикетки не имеет).
 // КБЖУ — стандартные табличные значения на 100 г.
 
+import {
+  buildQueryPlan,
+  createCorrector,
+  normText,
+  queryTokens,
+  scorePlan,
+  switchLayout,
+  tokenize,
+  wordForms,
+} from './searchText.js';
+
 const F = (name, kcal100, protein100, fat100, carbs100, aliases = []) => ({
   name,
   kcal100,
@@ -521,47 +532,36 @@ export const BASIC_FOODS = [
   F('Шейка свиная копчёная', 330, 15, 30, 0, ['шейка копчёная', 'свиная шейка']),
 ];
 
-const norm = (s) => s.toLowerCase().replace(/ё/g, 'е');
-const words = (s) => norm(s).split(/[^a-zа-я0-9,%]+/).filter(Boolean);
+// Поисковый индекс справочника (лениво, один раз): словоформы названия, алиасов и
+// склейки соседних слов названия («кус»+«кус» → «кускус» находит «Кус-кус» без дефиса)
+let INDEX = null;
 
-function commonPrefixLen(a, b) {
-  let i = 0;
-  while (i < a.length && i < b.length && a[i] === b[i]) i++;
-  return i;
+function buildIndex() {
+  return BASIC_FOODS.map((f) => {
+    const nameWords = tokenize(f.name);
+    const pairs = nameWords.slice(1).map((w, k) => nameWords[k] + w);
+    const words = new Set([...nameWords, ...f.aliases.flatMap(tokenize), ...pairs]);
+    return {
+      f,
+      forms: [...new Set([...words].flatMap(wordForms))],
+      nameNorm: normText(f.name).trim(),
+    };
+  });
 }
 
-// Насколько сильно слово запроса совпадает со словом продукта.
-// «греча» ↔ «гречка», «вареные» ↔ «варёная»: общий префикс ≥ 4 или одно — начало другого.
-// Балл нужен для ранжирования: без него «капучино» выдавала бы «капуста» (общий префикс «капу»).
-function tokenScore(token, word) {
-  if (word === token) return 3;
-  if (word.startsWith(token)) return 2; // запрос — начало слова: «капуч» → «капучино»
-  if (token.startsWith(word)) return 1; // слово — начало запроса
-  if (commonPrefixLen(token, word) >= 4) return 0.5; // нечёткое: «варёная» ↔ «вареные»
-  return 0;
-}
-
-// Продукт подходит, если каждое слово запроса находит себе слово в названии/алиасах.
-// Результаты ранжируем: точные/префиксные совпадения выше нечётких, точное начало названия — бонус.
+// Продукт подходит, если каждое слово запроса находит себе слово в названии/алиасах —
+// с учётом опечаток, раскладки и транслита (логика в searchText.js). Ранжирование:
+// точные/префиксные совпадения выше нечётких, точное начало названия — бонус.
 export function searchBasicFoods(query) {
-  const tokens = words(query);
-  if (!tokens.length) return [];
-  const qNorm = norm(query).trim();
+  const plan = buildQueryPlan(query);
+  if (!plan) return [];
+  if (!INDEX) INDEX = buildIndex();
   const scored = [];
-  BASIC_FOODS.forEach((f, i) => {
-    const foodWords = [...words(f.name), ...f.aliases.flatMap(words)];
-    let score = 0;
-    for (const t of tokens) {
-      let best = 0;
-      for (const w of foodWords) {
-        const s = tokenScore(t, w);
-        if (s > best) best = s;
-      }
-      if (best === 0) return; // это слово запроса ничего не нашло — продукт не подходит
-      score += best;
-    }
-    if (norm(f.name).startsWith(qNorm)) score += 2; // название целиком начинается с запроса
-    scored.push({ f, i, score });
+  INDEX.forEach((e, i) => {
+    let score = scorePlan(plan, e.forms);
+    if (!score) return;
+    if (e.nameNorm.startsWith(plan.qNorm)) score += 2; // название целиком начинается с запроса
+    scored.push({ f: e.f, i, score });
   });
   scored.sort((a, b) => b.score - a.score || a.i - b.i);
   return scored.slice(0, 20).map(({ f }) => ({
@@ -575,4 +575,45 @@ export function searchBasicFoods(query) {
     fat100: f.fat100,
     carbs100: f.carbs100,
   }));
+}
+
+// ---------- Исправление запроса по словарю справочника ----------
+
+let CORRECTOR = null;
+
+function buildVocab() {
+  const freq = new Map();
+  for (const f of BASIC_FOODS) {
+    for (const w of [...tokenize(f.name), ...f.aliases.flatMap(tokenize)]) {
+      if (w.length < 3 || /\d/.test(w)) continue;
+      freq.set(w, (freq.get(w) ?? 0) + 1);
+    }
+  }
+  return freq;
+}
+
+// «малоко» → «молоко», «vjkjrj» → «молоко» (раскладка). null — исправлять нечего.
+// Используется для подсказки в UI и расширения запроса к Open Food Facts: локальный
+// нечёткий поиск опечатки прощает сам, а вот серверный поиск OFF — нет.
+export function correctSearchQuery(query) {
+  if (!CORRECTOR) CORRECTOR = createCorrector(buildVocab());
+  const tokens = queryTokens(query);
+  if (!tokens.length) return null;
+  let changed = false;
+  const out = tokens.map((t) => {
+    if (CORRECTOR.known(t)) return t;
+    const sw = switchLayout(t);
+    const swNorm = sw ? normText(sw) : null;
+    if (swNorm && CORRECTOR.known(swNorm)) {
+      changed = true;
+      return swNorm;
+    }
+    const fixed = CORRECTOR.correct(t) ?? (swNorm ? CORRECTOR.correct(swNorm) : null);
+    if (fixed) {
+      changed = true;
+      return fixed;
+    }
+    return t;
+  });
+  return changed ? out.join(' ') : null;
 }

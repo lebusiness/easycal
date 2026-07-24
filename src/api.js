@@ -1,10 +1,14 @@
+import { bestScore, buildQueryPlan, normText, switchLayout, textForms, translit } from './searchText.js';
+import { correctSearchQuery } from './basicFoods.js';
+
 const TIMEOUT_MS = 8000;
 
 // На localhost (dev/preview) ходим через прокси Vite — у search-a-licious сломан CORS,
 // а legacy-поиск блокирует прямые запросы. Для деплоя с такими же rewrite'ами
 // (netlify.toml / vercel.json) сборка делается с VITE_OFF_PROXY=1.
+// «?.» — чтобы модуль импортировался и вне Vite (юнит-тесты в Node).
 const useLocalProxy =
-  import.meta.env.VITE_OFF_PROXY === '1' ||
+  import.meta.env?.VITE_OFF_PROXY === '1' ||
   (typeof location !== 'undefined' && ['localhost', '127.0.0.1'].includes(location.hostname));
 
 const SEARCH_HOST = useLocalProxy ? '/off-search' : 'https://search.openfoodfacts.org';
@@ -97,43 +101,26 @@ function normalizeOffProduct(p) {
 
 // Релевантность search-a-licious для русских запросов слабая: «Творог 2%» по запросу
 // «творог простоквашино» приходит 49-м, выше — кефир и молоко того же бренда.
-// Поэтому забираем 50 результатов и пересортировываем сами: точное совпадение слова
-// запроса с названием/брендом — 2 балла, вхождение подстрокой — 1, наличие ккал — +0,5.
-const NOISE_WORDS = new Set(['процент', 'процента', 'процентов', 'проц', 'жирность', 'жирности']);
-
-function tokenize(s) {
-  return s
-    .toLowerCase()
-    .replace(/%/g, ' ')
-    .split(/[\s,.;:()\-–—/]+/)
-    .filter(Boolean);
-}
-
-// Русские бренды в OFF часто записаны латиницей (Nemoloko, Prostokvashino),
-// поэтому кириллический запрос дублируем транслитом и сравниваем слова через него.
-const RU_TO_LAT = {
-  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i',
-  й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't',
-  у: 'u', ф: 'f', х: 'h', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sch', ъ: '', ы: 'y',
-  ь: '', э: 'e', ю: 'yu', я: 'ya',
-};
-
-function translit(s) {
-  return s.toLowerCase().replace(/[а-яё]/g, (ch) => RU_TO_LAT[ch] ?? ch);
-}
-
+// Поэтому забираем 50 результатов и пересортировываем сами через общий движок
+// searchText.js: точные/префиксные совпадения выше нечётких (опечатки, транслит,
+// раскладка), бонусы за покрытие всех слов запроса и наличие ккал.
 export function rankProducts(products, query) {
-  const qTokens = tokenize(query).filter((t) => !NOISE_WORDS.has(t));
-  if (!qTokens.length) return products;
-  const qCanon = qTokens.map(translit);
+  const plan = buildQueryPlan(query);
+  if (!plan) return products;
   return products
     .map((p, i) => {
-      const hayCanon = translit(`${p.name ?? ''} ${p.brand ?? ''}`);
-      const hayTokens = new Set(tokenize(hayCanon));
+      const forms = textForms(`${p.name ?? ''} ${p.brand ?? ''}`);
       let score = p.kcal100 != null ? 0.5 : 0;
-      for (const t of qCanon) {
-        if (hayTokens.has(t)) score += 2;
-        else if (hayCanon.includes(t)) score += 1;
+      let full = true;
+      for (let k = 0; k < plan.variants.length; k++) {
+        const s = bestScore(plan.variants[k], forms);
+        if (s === 0 && !plan.soft[k]) full = false;
+        score += s;
+      }
+      if (full) score += 1.5; // нашлись все слова запроса — сильный сигнал
+      if (!full && plan.joined) {
+        const js = bestScore(plan.joined, forms); // «просто квашино» → «простоквашино»
+        if (js >= 1.3) score += js;
       }
       return { p, i, score };
     })
@@ -145,13 +132,28 @@ const PAGE_SIZE = 50;
 const MAX_RESULTS = 15;
 
 // Каскад: search-a-licious → legacy-поиск. Бросает ApiError, если оба недоступны.
-// Кириллический запрос расширяем транслитом (у поиска OFF OR-семантика,
-// лишние слова не сужают выдачу — ранжируем всё равно сами).
+// Запрос расширяем транслитом, исправленной раскладкой и исправлением опечаток по
+// словарю справочника: у поиска OFF OR-семантика, лишние слова не сужают выдачу
+// (ранжируем всё равно сами), а «малоко»/«vjkjrj» сервер иначе не найдёт.
 export async function searchOpenFoodFacts(query) {
   const original = query.trim();
-  const lat = translit(original);
-  const expanded = lat !== original.toLowerCase() ? `${original} ${lat}` : original;
-  const q = encodeURIComponent(expanded);
+  const qNorm = normText(original);
+  const variants = new Set([original]);
+  const lat = translit(qNorm);
+  if (lat !== qNorm) variants.add(lat);
+  const sw = switchLayout(qNorm);
+  if (sw) {
+    variants.add(sw);
+    const swLat = translit(sw);
+    if (swLat !== sw) variants.add(swLat);
+  }
+  const corrected = correctSearchQuery(original);
+  if (corrected) {
+    variants.add(corrected);
+    const corrLat = translit(corrected);
+    if (corrLat !== corrected) variants.add(corrLat);
+  }
+  const q = encodeURIComponent([...variants].join(' '));
   let products;
   try {
     const { ok, body } = await fetchJson(

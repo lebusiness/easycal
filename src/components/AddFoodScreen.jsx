@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   db,
@@ -15,7 +15,7 @@ import {
   guessMeal,
 } from '../db.js';
 import { searchOpenFoodFacts, fetchProductByBarcode } from '../api.js';
-import { searchBasicFoods } from '../basicFoods.js';
+import { searchBasicFoods, correctSearchQuery } from '../basicFoods.js';
 import { useBackClose } from '../navigation.js';
 import { fmt0 } from '../utils.js';
 import Header from './Header.jsx';
@@ -60,10 +60,27 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocus
 
   const q = query.trim();
 
+  // Локальные продукты (свои + избранное) — офлайн, поэтому ищем почти сразу,
+  // не дожидаясь длинного debounce API-запроса
+  useEffect(() => {
+    if (q.length < 2) {
+      setLocalResults([]);
+      return undefined;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const local = await searchLocalProducts(q).catch(() => []);
+      if (!cancelled) setLocalResults(local);
+    }, 120);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [q]);
+
   useEffect(() => {
     setSearchError(false);
     if (q.length < 2) {
-      setLocalResults([]);
       setOffResults([]);
       setSearched(false);
       setSearching(false);
@@ -72,10 +89,6 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocus
     let cancelled = false;
     setSearching(true);
     const timer = setTimeout(async () => {
-      // Локальные продукты (свои + избранное) — офлайн и мгновенно
-      const local = await searchLocalProducts(q).catch(() => []);
-      if (cancelled) return;
-      setLocalResults(local);
       try {
         const [off, overrides] = await Promise.all([searchOpenFoodFacts(q), getOverridesMap()]);
         if (!cancelled) setOffResults(off.map((p) => applyOverride(p, overrides)));
@@ -96,6 +109,12 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocus
       clearTimeout(timer);
     };
   }, [q, retryTick]);
+
+  // Справочник базовых продуктов (варёные крупы, мясо, овощи…) — локально и мгновенно
+  const basicResults = useMemo(() => (q.length >= 2 ? searchBasicFoods(q) : []), [q]);
+  // Подсказка «возможно, вы искали»: опечатки и не та раскладка. Исправленный вариант
+  // уже участвует в поиске сам — подсказка объясняет выдачу и позволяет заменить запрос.
+  const searchHint = useMemo(() => (q.length >= 3 ? correctSearchQuery(q) : null), [q]);
 
   function openManual(prefill) {
     setManualPrefill(prefill ?? null);
@@ -169,8 +188,6 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocus
   // Дубликаты OFF-результатов, уже сохранённые локально (по штрихкоду), скрываем
   const localBarcodes = new Set(localResults.map((p) => p.barcode).filter(Boolean));
   const off = offResults.filter((p) => !p.barcode || !localBarcodes.has(p.barcode));
-  // Справочник базовых продуктов (варёные крупы, мясо, овощи…) — локально и мгновенно
-  const basicResults = q.length >= 2 ? searchBasicFoods(q) : [];
   const nothingFound =
     searched &&
     !searching &&
@@ -232,6 +249,17 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocus
             <IconBarcode className="h-6 w-6" />
           </button>
         </div>
+
+        {searchHint && (
+          <button
+            type="button"
+            onClick={() => setQuery(searchHint)}
+            className="mt-1.5 px-1 text-left text-xs text-stone-500 active:text-stone-700"
+          >
+            Возможно, вы искали:{' '}
+            <span className="font-semibold text-emerald-700">{searchHint}</span>
+          </button>
+        )}
 
         {barcodeState?.status === 'loading' && (
           <div className="mt-2 flex items-center gap-2.5 rounded-xl bg-white p-3 shadow-sm">

@@ -1,6 +1,7 @@
 import Dexie from 'dexie';
 import { round1 } from './utils.js';
 import { api } from './api-client.js';
+import { buildQueryPlan, normText, scorePlan, textForms } from './searchText.js';
 
 export const DEFAULT_MEALS = ['Завтрак', 'Обед', 'Ужин', 'На ночь'];
 
@@ -160,17 +161,28 @@ function favSnapshotToResult(s) {
   };
 }
 
-// Поиск по подстроке (название + описание) без учёта регистра: мои продукты + избранные снапшоты
+// Поиск по своим продуктам и избранным снапшотам через общий движок searchText.js:
+// опечатки, раскладка, транслит, ё/й — как в справочнике. Вхождение подстрокой
+// (прежнее поведение) оставлено запасным путём, результаты ранжируются.
 export async function searchLocalProducts(query) {
-  const q = query.trim().toLowerCase();
-  if (!q) return [];
-  const mine = await db.myProducts
-    .filter((p) => `${p.name ?? ''} ${p.description ?? ''}`.toLowerCase().includes(q))
-    .toArray();
-  const snaps = await db.favorites
-    .filter((s) => `${s.name ?? ''} ${s.brand ?? ''}`.toLowerCase().includes(q))
-    .toArray();
-  return [...mine.map(myProductToResult), ...snaps.map(favSnapshotToResult)];
+  const plan = buildQueryPlan(query);
+  if (!plan) return [];
+  const scoreOf = (name, extra) => {
+    const hay = `${name ?? ''} ${extra ?? ''}`;
+    let s = scorePlan(plan, textForms(hay));
+    if (!s && normText(hay).includes(plan.qNorm)) s = 0.3;
+    if (s && name && normText(name).startsWith(plan.qNorm)) s += 2;
+    return s;
+  };
+  const [mine, snaps] = await Promise.all([db.myProducts.toArray(), db.favorites.toArray()]);
+  return [
+    ...mine.map((p) => ({ r: myProductToResult(p), s: scoreOf(p.name, p.description) })),
+    ...snaps.map((f) => ({ r: favSnapshotToResult(f), s: scoreOf(f.name, f.brand) })),
+  ]
+    .filter((x) => x.s > 0)
+    .sort((a, b) => b.s - a.s)
+    .slice(0, 30)
+    .map((x) => x.r);
 }
 
 export function getAllMyProducts() {
