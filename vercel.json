@@ -1,0 +1,12 @@
+{
+  "build": {
+    "env": {
+      "VITE_OFF_PROXY": "1"
+    }
+  },
+  "rewrites": [
+    { "source": "/off-search/:path*", "destination": "https://search.openfoodfacts.org/:path*" },
+    { "source": "/off-ru/:path*", "destination": "https://ru.openfoodfacts.org/:path*" },
+    { "source": "/off-world/:path*", "destination": "https://world.openfoodfacts.org/:path*" }
+  ]
+}

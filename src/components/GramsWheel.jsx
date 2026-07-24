@@ -1,0 +1,91 @@
+import { useEffect, useMemo, useRef } from 'react';
+import { parseNum } from '../utils.js';
+
+const ITEM_H = 36; // px, высота пункта барабана
+const WHEEL_H = 108; // 3 видимых пункта
+const PAD = (WHEEL_H - ITEM_H) / 2; // отступы, чтобы крайние значения вставали по центру
+
+// Вертикальный барабан выбора граммов: крутится пальцем, значение фиксируется по центру
+export default function GramsWheel({ value, onChange, min = 1, max = 500, step = 1 }) {
+  const values = useMemo(() => {
+    const arr = [];
+    for (let v = min; v <= max; v += step) arr.push(v);
+    return arr;
+  }, [min, max, step]);
+
+  const ref = useRef(null);
+  const fromScrollRef = useRef(null);
+  const current = parseNum(String(value)) ?? 0;
+
+  const nearestIndex = (v) => {
+    let best = 0;
+    let bestDist = Infinity;
+    values.forEach((x, i) => {
+      const d = Math.abs(x - v);
+      if (d < bestDist) {
+        bestDist = d;
+        best = i;
+      }
+    });
+    return best;
+  };
+
+  // Подкрутка к внешнему значению (пресеты, первый рендер). Изменения, пришедшие
+  // от прокрутки самого барабана, пропускаем — иначе он дёргается под пальцем.
+  useEffect(() => {
+    if (fromScrollRef.current === current) {
+      fromScrollRef.current = null;
+      return;
+    }
+    const el = ref.current;
+    if (!el) return;
+    const target = nearestIndex(current) * ITEM_H;
+    if (Math.abs(el.scrollTop - target) > 1) {
+      try {
+        if (typeof el.scrollTo === 'function') el.scrollTo({ top: target });
+        else el.scrollTop = target;
+      } catch {
+        el.scrollTop = target;
+      }
+    }
+  }, [current, values]);
+
+  function handleScroll() {
+    const el = ref.current;
+    if (!el) return;
+    const idx = Math.max(0, Math.min(values.length - 1, Math.round(el.scrollTop / ITEM_H)));
+    const v = values[idx];
+    if (v !== current) {
+      fromScrollRef.current = v;
+      onChange(String(v));
+    }
+  }
+
+  return (
+    <div className="relative h-[108px] overflow-hidden rounded-xl bg-stone-50">
+      <div className="pointer-events-none absolute inset-x-2 top-1/2 z-0 h-[36px] -translate-y-1/2 rounded-lg border border-emerald-200 bg-emerald-50/80" />
+      <div
+        ref={ref}
+        onScroll={handleScroll}
+        aria-label="Выбор веса порции"
+        className="no-scrollbar relative z-[1] h-full snap-y snap-mandatory overflow-y-auto overscroll-contain"
+        style={{ paddingTop: PAD, paddingBottom: PAD }}
+      >
+        {values.map((v) => (
+          <button
+            type="button"
+            key={v}
+            onClick={() => onChange(String(v))}
+            className={`flex h-[36px] w-full snap-center items-center justify-center transition-colors ${
+              v === current ? 'text-xl font-bold text-emerald-700' : 'text-base text-stone-400'
+            }`}
+          >
+            {v} г
+          </button>
+        ))}
+      </div>
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-[2] h-8 bg-gradient-to-b from-stone-50 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[2] h-8 bg-gradient-to-t from-stone-50 to-transparent" />
+    </div>
+  );
+}

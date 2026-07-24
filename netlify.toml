@@ -1,0 +1,23 @@
+# Деплой на Netlify: сборка с VITE_OFF_PROXY=1 заставляет приложение ходить
+# на /off-* — эти пути проксируются на Open Food Facts, обходя их сломанный CORS.
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  VITE_OFF_PROXY = "1"
+
+[[redirects]]
+  from = "/off-search/*"
+  to = "https://search.openfoodfacts.org/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/off-ru/*"
+  to = "https://ru.openfoodfacts.org/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/off-world/*"
+  to = "https://world.openfoodfacts.org/:splat"
+  status = 200
