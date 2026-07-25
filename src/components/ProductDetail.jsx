@@ -95,10 +95,11 @@ export default function ProductDetail({ product, entry, date, meal, meals, onMea
 
   const isMine = product.source === 'mine' && product.id != null;
 
-  // Управление пресетами прямо в карточке — только для избранных продуктов из базы:
-  // у них нет формы редактирования. Свои продукты настраиваются через «Редактировать»,
-  // а здесь пресеты просто выбираются в списке порций.
-  const canEditPresets = favSaved && !isMine;
+  // Управление пресетами прямо в карточке — только для избранных продуктов из базы
+  // (у них нет формы редактирования) и только при редактировании записи дневника:
+  // при обычном добавлении строка дублировала бы чипы выбора порции. Свои продукты
+  // настраиваются через «Редактировать».
+  const canEditPresets = entry != null && favSaved && !isMine;
 
   function currentProduct() {
     return {
@@ -478,13 +479,13 @@ export default function ProductDetail({ product, entry, date, meal, meals, onMea
           )}
 
           {entry && (
-            <label className="mt-2.5 block">
-              <span className="mb-1 block text-xs font-medium text-stone-500">Время добавления</span>
+            <label className="mt-2.5 flex items-center justify-between gap-3">
+              <span className="text-xs font-medium text-stone-500">Время добавления</span>
               <input
                 type="time"
                 value={time}
                 onChange={(e) => setTime(e.target.value)}
-                className="w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5 text-center text-base font-semibold outline-none focus:border-emerald-500"
+                className="w-28 shrink-0 rounded-lg border border-stone-200 bg-stone-50 px-2.5 py-1.5 text-center text-sm font-semibold outline-none focus:border-emerald-500"
               />
             </label>
           )}
