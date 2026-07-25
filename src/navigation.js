@@ -13,22 +13,34 @@ const handlers = [];
 // переиспользует запись истории закрывшегося — иначе back() и pushState наперегонки
 // ломают стек, и новый экран мгновенно закрывается пришедшим popstate.
 let pendingPop = 0;
+let flushQueued = false;
 let initialized = false;
 
 function ensureInit() {
   if (initialized) return;
   initialized = true;
+  // Стек истории здесь — про открытые экраны, а не про позиции прокрутки:
+  // авто-восстановление скролла браузером на popstate прыгает по странице
+  // (экран открывается «в середине», хедер за краем) — выключаем
+  if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual';
+  // После перезагрузки страницы (например, обновления service worker) текущая
+  // запись истории может нести глубину прошлой сессии, а приложение стартует
+  // без открытых экранов — выравниваем, иначе весь счёт глубины съезжает
+  window.history.replaceState({ appDepth: 0 }, '');
   window.addEventListener('popstate', (e) => {
     const depth = e.state?.appDepth ?? 0;
+    if (depth > handlers.length) {
+      // Запись глубже, чем открыто экранов: системный жест «вперёд» (iOS 18.4+)
+      // вернул уже закрытый экран, которого нет. Откатываемся к записи,
+      // соответствующей реальной глубине, — придёт popstate и совпадёт
+      window.history.go(handlers.length - depth);
+      return;
+    }
     while (handlers.length > depth) {
       const h = handlers.pop();
       h.current();
     }
   });
-}
-
-export function canGoBack() {
-  return handlers.length > 0;
 }
 
 export function useBackClose(onClose) {
@@ -52,16 +64,24 @@ export function useBackClose(onClose) {
       if (i !== -1) {
         // Экран закрыли из UI — снимаем регистрацию, а запись истории съедаем
         // отложенно: эффект монтирования экрана-замены успеет её переиспользовать.
-        // Если замены не было, back() уйдёт, и popstate придёт с совпадающей
+        // Если замены не было, откат уйдёт, и popstate придёт с совпадающей
         // глубиной, ничего не тронув.
         handlers.splice(i, 1);
         pendingPop += 1;
-        queueMicrotask(() => {
-          if (pendingPop > 0) {
-            pendingPop -= 1;
-            window.history.back();
-          }
-        });
+        if (!flushQueued) {
+          flushQueued = true;
+          queueMicrotask(() => {
+            flushQueued = false;
+            if (pendingPop > 0) {
+              // Все накопившиеся записи — одним go(-n): серия отдельных back()
+              // в iOS может потерять часть навигаций, оставляя в истории «хвост»,
+              // из-за которого жест «назад» срабатывает даже на корневом экране
+              const n = pendingPop;
+              pendingPop = 0;
+              window.history.go(-n);
+            }
+          });
+        }
       }
     };
     // регистрация — один раз на время жизни экрана
@@ -107,76 +127,7 @@ export function useScrollToAction() {
   return ref;
 }
 
-// Свайп от левого края → «назад» (важно для iOS-PWA, где нет системного жеста).
-//
-// Чтобы жест не срабатывал от случайных касаний, он намеренно строгий:
-// - решение принимается только при ОТПУСКАНИИ пальца, а не посреди движения —
-//   можно передумать и вернуть палец назад;
-// - нужна длинная протяжка (~полэкрана), короткие движения ничего не листают;
-// - следим за конкретным пальцем: второй палец на экране отменяет жест;
-// - ранний уход вертикально — это скролл, жест отменяется;
-// - если касание перехватила другая механика (драг записи между приёмами
-//   гасит touchmove через preventDefault) — жест тоже отменяется.
-export function useEdgeSwipeBack() {
-  useEffect(() => {
-    let touchId = null; // identifier отслеживаемого пальца; null — жеста нет
-    let startX = 0;
-    let startY = 0;
-
-    const findTouch = (list, id) => {
-      for (let i = 0; i < list.length; i++) {
-        if (list[i].identifier === id) return list[i];
-      }
-      return null;
-    };
-
-    const reset = () => {
-      touchId = null;
-    };
-
-    const onStart = (e) => {
-      // Второе касание во время жеста (жест «щипок» и т. п.) — отмена
-      if (touchId != null) return reset();
-      if (e.touches.length !== 1) return;
-      const t = e.touches[0];
-      if (t.clientX <= 28 && canGoBack()) {
-        touchId = t.identifier;
-        startX = t.clientX;
-        startY = t.clientY;
-      }
-    };
-
-    const onMove = (e) => {
-      if (touchId == null) return;
-      if (e.touches.length > 1 || e.defaultPrevented) return reset();
-      const t = findTouch(e.touches, touchId);
-      if (!t) return reset();
-      const dx = t.clientX - startX;
-      const dy = Math.abs(t.clientY - startY);
-      if (dy > 40 && dy > dx) reset(); // вертикальный скролл
-    };
-
-    const onEnd = (e) => {
-      if (touchId == null) return;
-      const t = findTouch(e.changedTouches, touchId);
-      if (!t) return; // отпустили не тот палец
-      const dx = t.clientX - startX;
-      const dy = Math.abs(t.clientY - startY);
-      reset();
-      // Полная протяжка: половина экрана (не меньше 150px), почти горизонтально
-      const threshold = Math.min(Math.max(150, window.innerWidth * 0.5), 320);
-      if (dx >= threshold && dy < dx * 0.5 && canGoBack()) window.history.back();
-    };
-
-    window.addEventListener('touchstart', onStart, { passive: true });
-    window.addEventListener('touchmove', onMove, { passive: true });
-    window.addEventListener('touchend', onEnd, { passive: true });
-    window.addEventListener('touchcancel', reset, { passive: true });
-    return () => {
-      window.removeEventListener('touchstart', onStart);
-      window.removeEventListener('touchmove', onMove);
-      window.removeEventListener('touchend', onEnd);
-      window.removeEventListener('touchcancel', reset);
-    };
-  }, []);
-}
+// Своего жеста «свайп от края → назад» больше нет: с iOS 18.4 системный жест
+// назад/вперёд есть и в PWA с домашнего экрана (отключить его нельзя, а touch-
+// события при этом продолжают приходить странице) — собственный обработчик
+// дублировал системный, и один свайп откатывал историю на два уровня.

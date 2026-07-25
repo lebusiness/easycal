@@ -1,8 +1,9 @@
 import { IconChevronLeft } from './Icons.jsx';
 
 export default function Header({ title, onBack }) {
+  // Без backdrop-blur: в iOS Safari sticky + backdrop-filter иногда не отрисовывается
   return (
-    <header className="sticky top-0 z-10 flex items-center gap-1 bg-stone-100/90 px-2 py-2 backdrop-blur">
+    <header className="sticky top-0 z-10 flex items-center gap-1 bg-stone-100 px-2 py-2">
       <button
         type="button"
         onClick={onBack}

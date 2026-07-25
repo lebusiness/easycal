@@ -66,9 +66,9 @@ export function formatTime(iso) {
 export const presetToObj = (p) => (typeof p === 'number' ? { g: p } : p);
 
 export function fmt0(n) {
-  return n == null ? '—' : Math.round(n).toLocaleString('ru-RU');
+  return n == null || !Number.isFinite(n) ? '—' : Math.round(n).toLocaleString('ru-RU');
 }
 
 export function fmt1(n) {
-  return n == null ? '—' : round1(n).toLocaleString('ru-RU');
+  return n == null || !Number.isFinite(n) ? '—' : round1(n).toLocaleString('ru-RU');
 }

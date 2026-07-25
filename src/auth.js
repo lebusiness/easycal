@@ -11,7 +11,7 @@ function cacheUser(user) {
   }
 }
 
-function cachedUser() {
+export function cachedUser() {
   try {
     const raw = localStorage.getItem('authUser');
     return raw ? JSON.parse(raw) : null;

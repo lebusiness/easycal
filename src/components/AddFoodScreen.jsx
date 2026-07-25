@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   db,
@@ -35,6 +35,25 @@ const TABS = [
   { key: 'favorites', label: 'Избранное' },
   { key: 'mine', label: 'Свои' },
 ];
+
+// Карточка/форма открывается поверх длинного списка в том же скролле — без сброса
+// наверх новый экран показывается прокрученным в середину (хедер и верх «пропадают»)
+function ScrollReset() {
+  const ref = useRef(null);
+  useEffect(() => {
+    let scroller = null;
+    for (let p = ref.current?.parentElement; p && p !== document.body; p = p.parentElement) {
+      const { overflowY } = getComputedStyle(p);
+      if (overflowY === 'auto' || overflowY === 'scroll') {
+        scroller = p;
+        break;
+      }
+    }
+    if (scroller) scroller.scrollTop = 0;
+    else window.scrollTo(0, 0);
+  }, []);
+  return <span ref={ref} className="hidden" />;
+}
 
 // pickMode — экран работает как выбор ингредиента для составного продукта:
 // тот же поиск/вкладки/штрихкод, но вместо карточки — шторка с весом,
@@ -156,7 +175,13 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocus
     setView(p.ingredients?.length ? 'composite' : 'manual');
   }
 
+  // Открытие карточки асинхронное (дочитываем свежий продукт и избранное):
+  // при быстрых тапах по двум продуктам побеждать должен последний, а не тот,
+  // чьи чтения случайно завершились позже
+  const openSeqRef = useRef(0);
+
   async function openDetail(product) {
+    const seq = ++openSeqRef.current;
     // Свой продукт мог измениться после снапшота (частые/дневник) — читаем свежий
     let p = product;
     if (p.source === 'mine' && p.id != null) {
@@ -165,6 +190,7 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocus
     }
     // Подтягиваем флаг избранного и пресеты граммов (по своему id или штрихкоду)
     const fav = await getFavoriteFor(p).catch(() => null);
+    if (seq !== openSeqRef.current) return;
     setSelected(fav ? { ...p, ...fav } : p);
     setBarcodeState(null);
     // В режиме выбора ингредиента карточка не нужна — поверх списка откроется шторка с весом
@@ -201,6 +227,8 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocus
 
   if (view === 'detail' && selected) {
     return (
+      <>
+      <ScrollReset key="detail" />
       <ProductDetail
         product={selected}
         date={date}
@@ -214,11 +242,14 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocus
         }}
         onAdded={onClose}
       />
+      </>
     );
   }
 
   if (view === 'manual') {
     return (
+      <>
+      <ScrollReset key="manual" />
       <ManualProductForm
         prefill={manualPrefill}
         product={editing?.product}
@@ -252,11 +283,14 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocus
           setView('search');
         }}
       />
+      </>
     );
   }
 
   if (view === 'composite') {
     return (
+      <>
+      <ScrollReset key="composite" />
       <CompositeProductForm
         product={editing?.product}
         onBack={() => {
@@ -285,6 +319,7 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocus
           setView('search');
         }}
       />
+      </>
     );
   }
 
@@ -567,13 +602,26 @@ function IngredientSheet({ product, onConfirm, onClose }) {
   );
 }
 
+// Ключ строки — идентичность продукта (не индекс): при обновлении списка React
+// не переиспользует DOM чужой строки, тап всегда попадает в тот продукт
+function rowKeyOf(p) {
+  if (p.source === 'mine' && p.id != null) return `m${p.id}`;
+  if (p.favId != null) return `f${p.favId}`;
+  if (p.barcode) return `b${p.barcode}`;
+  return `n${p.name}`;
+}
+
 function TabsView({ tab, onTab, mealLabel, refreshKey, canManage = true, onSelect, onEdit, onNewProduct, onNewComposite }) {
-  const [items, setItems] = useState(null);
   const [reload, setReload] = useState(0);
+  // Загруженный список помним вместе с «областью» (вкладка + приём), для которой
+  // он собран. Пока не пришли данные текущей вкладки — спиннер: иначе после
+  // переключения вкладки на экране остаётся список прежней, и тап открывает
+  // не тот продукт (например, «частый» вместо «своего»)
+  const scope = `${tab}|${mealLabel ?? ''}`;
+  const [loaded, setLoaded] = useState(null); // { scope, items }
 
   useEffect(() => {
     let cancelled = false;
-    setItems(null);
     (async () => {
       let list = [];
       if (tab === 'frequent') {
@@ -587,12 +635,15 @@ function TabsView({ tab, onTab, mealLabel, refreshKey, canManage = true, onSelec
       } else {
         list = (await getAllMyProducts()).map((p) => ({ product: p }));
       }
-      if (!cancelled) setItems(list);
+      if (!cancelled) setLoaded({ scope, items: list });
     })();
     return () => {
       cancelled = true;
     };
-  }, [tab, mealLabel, refreshKey, reload]);
+  }, [tab, mealLabel, scope, refreshKey, reload]);
+
+  // Перезагрузка той же вкладки (звёздочка, удаление) обновляет список без спиннера
+  const items = loaded?.scope === scope ? loaded.items : null;
 
   async function handleToggleFavorite(product) {
     if (product.source === 'mine' && product.id != null) {
@@ -642,9 +693,9 @@ function TabsView({ tab, onTab, mealLabel, refreshKey, canManage = true, onSelec
             {emptyText}
           </div>
         ) : (
-          items.map((item, i) => (
+          items.map((item) => (
             <ProductRow
-              key={`${tab}-${i}`}
+              key={rowKeyOf(item.product)}
               product={item.product}
               topMeal={item.topMeal}
               showStar={tab === 'mine' || tab === 'favorites'}

@@ -270,7 +270,8 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
 
   return (
     <div className="mx-auto w-full max-w-md pb-28">
-      <header className="sticky top-0 z-10 bg-stone-100/90 px-3 pb-1.5 pt-2 backdrop-blur">
+      {/* Без backdrop-blur: в iOS Safari sticky + backdrop-filter иногда не отрисовывается */}
+      <header className="sticky top-0 z-10 bg-stone-100 px-3 pb-1.5 pt-2">
         <div className="flex items-center justify-between">
           <button
             type="button"
