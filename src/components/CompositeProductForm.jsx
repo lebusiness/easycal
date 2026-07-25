@@ -10,14 +10,15 @@ import { useBackClose } from '../navigation.js';
 // Составной продукт: блюдо из нескольких продуктов (например, молоко + банан).
 // Ингредиенты — снапшоты КБЖУ на 100 г + вес; итоговые КБЖУ на 100 г считаются
 // из суммы, поэтому дальше продукт живёт как обычный «свой» (поиск, избранное,
-// дневник). product задан — редактирование, иначе создание.
-export default function CompositeProductForm({ product, onBack, onSaved, onDeleted }) {
+// дневник). product задан — редактирование, иначе создание; initialIngredients —
+// создание с готовым составом (сборка блюда из записей дневника).
+export default function CompositeProductForm({ product, initialIngredients, onBack, onSaved, onDeleted }) {
   useBackClose(onBack);
   const editing = product != null;
   const [name, setName] = useState(product?.name ?? '');
   // Вес храним строкой — это живое поле ввода
   const [ingredients, setIngredients] = useState(() =>
-    (product?.ingredients ?? []).map((ing) => ({ ...ing, g: String(ing.g) }))
+    (product?.ingredients ?? initialIngredients ?? []).map((ing) => ({ ...ing, g: String(ing.g) }))
   );
   const [pinFavorite, setPinFavorite] = useState(!!product?.favorite);
   const [picking, setPicking] = useState(false);

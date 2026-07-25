@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import {
   addDiaryEntry,
+  updateDiaryEntry,
+  deleteDiaryEntry,
   productKeyOf,
   saveFavoriteSnapshot,
   toggleMyProductFavorite,
@@ -8,7 +10,7 @@ import {
   updateFavoritePresets,
   updateMyProduct,
 } from '../db.js';
-import { parseNum, round1, fmt1, kcalFromMacros, notifyError, presetToObj } from '../utils.js';
+import { parseNum, round1, fmt1, formatTime, kcalFromMacros, notifyError, presetToObj } from '../utils.js';
 import { fileToThumb } from '../image.js';
 import Header from './Header.jsx';
 import PortionPicker from './PortionPicker.jsx';
@@ -23,7 +25,9 @@ const MACROS = [
   { key: 'carbs100', label: 'Углеводы' },
 ];
 
-export default function ProductDetail({ product, date, meal, meals, onMealChange, onEdit, onBack, onAdded }) {
+// entry задан — карточка открыта по записи дневника: тот же UI (избранное,
+// пресеты, БЖУ), но кнопка сохраняет изменения в записи, а не создаёт новую
+export default function ProductDetail({ product, entry, date, meal, meals, onMealChange, onEdit, onBack, onAdded, onDeleted }) {
   useBackClose(onBack);
   // Значения из OFF бывают вида 7.699999809 — приводим к одному знаку
   const [vals, setVals] = useState(() =>
@@ -33,9 +37,11 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
   );
   // У составного продукта порция по умолчанию — всё блюдо целиком
   const [grams, setGrams] = useState(() => {
+    if (entry) return String(entry.grams);
     const total = product.ingredients?.reduce((s, ing) => s + (ing.g > 0 ? ing.g : 0), 0);
     return total > 0 ? String(round1(total)) : '100';
   });
+  const [time, setTime] = useState(() => (entry ? formatTime(entry.addedAt) ?? '' : ''));
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [favSaved, setFavSaved] = useState(!!product.favorite);
@@ -119,12 +125,40 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
       return;
     }
     const p = currentProduct();
-    const name =
-      product.brand && !product.name.toLowerCase().includes(product.brand.toLowerCase())
-        ? `${product.name} (${product.brand})`
-        : product.name;
+    const portionOf = {
+      grams: round1(g),
+      kcal: round1((p.kcal100 * g) / 100),
+      protein: round1((p.protein100 * g) / 100),
+      fat: round1((p.fat100 * g) / 100),
+      carbs: round1((p.carbs100 * g) / 100),
+    };
     setSaving(true);
     try {
+      if (entry) {
+        // Редактирование существующей записи: обновляем порцию, приём, время и снапшот БЖУ
+        let addedAt = entry.addedAt ?? null;
+        if (time) {
+          const [y, mo, d] = entry.date.split('-').map(Number);
+          const [hh, mm] = time.split(':').map(Number);
+          addedAt = new Date(y, mo - 1, d, hh, mm).toISOString();
+        }
+        await updateDiaryEntry(entry.id, {
+          ...portionOf,
+          mealId: meal.id,
+          mealLabel: meal.name,
+          addedAt,
+          kcal100: p.kcal100,
+          protein100: p.protein100,
+          fat100: p.fat100,
+          carbs100: p.carbs100,
+        });
+        onAdded();
+        return;
+      }
+      const name =
+        product.brand && !product.name.toLowerCase().includes(product.brand.toLowerCase())
+          ? `${product.name} (${product.brand})`
+          : product.name;
       await addDiaryEntry({
         date,
         mealId: meal.id,
@@ -139,17 +173,22 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
         protein100: p.protein100,
         fat100: p.fat100,
         carbs100: p.carbs100,
-        grams: round1(g),
-        kcal: round1((p.kcal100 * g) / 100),
-        protein: round1((p.protein100 * g) / 100),
-        fat: round1((p.fat100 * g) / 100),
-        carbs: round1((p.carbs100 * g) / 100),
+        ...portionOf,
         addedAt: new Date().toISOString(),
       });
       onAdded();
     } catch {
       setSaving(false);
       setError('Не удалось сохранить запись — проверьте связь с сервером.');
+    }
+  }
+
+  async function handleDeleteEntry() {
+    try {
+      await deleteDiaryEntry(entry.id);
+      onDeleted?.();
+    } catch (e) {
+      notifyError(e);
     }
   }
 
@@ -232,7 +271,7 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
 
   return (
     <div className="mx-auto w-full max-w-md pb-8">
-      <Header title="Добавить в дневник" onBack={onBack} />
+      <Header title={entry ? 'Запись в дневнике' : 'Добавить в дневник'} onBack={onBack} />
 
       <div className="px-3">
         <section className="rounded-2xl bg-white p-3.5 shadow-sm">
@@ -438,6 +477,18 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
             </div>
           )}
 
+          {entry && (
+            <label className="mt-2.5 block">
+              <span className="mb-1 block text-xs font-medium text-stone-500">Время добавления</span>
+              <input
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                className="w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5 text-center text-base font-semibold outline-none focus:border-emerald-500"
+              />
+            </label>
+          )}
+
           <div className="mt-2.5 rounded-xl bg-emerald-50 px-3.5 py-2 text-[0.9375rem] text-emerald-900">
             <b className="text-xl">{fmt1(portion(kcal100))}</b> ккал · Б <b>{fmt1(portion(per100.protein))}</b> · Ж{' '}
             <b>{fmt1(portion(per100.fat))}</b> · У <b>{fmt1(portion(per100.carbs))}</b>
@@ -451,8 +502,18 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
             disabled={saving}
             className="mt-2.5 w-full truncate rounded-full bg-emerald-600 py-3 text-base font-semibold text-white active:bg-emerald-700 disabled:opacity-60"
           >
-            Добавить в «{meal?.name ?? 'приём'}»
+            {entry ? 'Сохранить' : `Добавить в «${meal?.name ?? 'приём'}»`}
           </button>
+
+          {entry && (
+            <button
+              type="button"
+              onClick={handleDeleteEntry}
+              className="mt-1.5 w-full rounded-full py-2.5 text-sm font-semibold text-red-600 active:bg-red-50"
+            >
+              Удалить запись
+            </button>
+          )}
         </section>
       </div>
 

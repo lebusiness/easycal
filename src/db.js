@@ -659,7 +659,8 @@ export async function clearGoals() {
 
 // ---------- Часто употребляемые ----------
 
-function entryToProduct(e) {
+// Снапшот записи дневника → продукт для карточки/списков
+export function entryToProduct(e) {
   return {
     source: e.myProductId != null ? 'mine' : 'off',
     id: e.myProductId ?? undefined,

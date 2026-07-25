@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import GramsWheel from './GramsWheel.jsx';
 import PhotoViewer from './PhotoViewer.jsx';
-import { parseNum, fmt1, presetToObj } from '../utils.js';
+import { parseNum, fmt1, round1, presetToObj } from '../utils.js';
 
 const GRAM_PRESETS = [50, 100, 150, 200];
 
@@ -28,6 +28,22 @@ export default function PortionPicker({ grams, onChange, presets }) {
 
   const g = parseNum(grams);
   const [viewPhoto, setViewPhoto] = useState(null); // фото пресета на весь экран
+
+  // Повторные тапы по одному пресету суммируют порции: 150 г → 300 г → 450 г.
+  // Счёт живёт, пока граммы не изменили другим способом (барабан/клавиатура).
+  const [multi, setMulti] = useState(null); // { g, count }
+
+  function tapPreset(pg) {
+    const cur = parseNum(grams);
+    if (multi && multi.g === pg && cur != null && cur === round1(pg * multi.count)) {
+      const count = multi.count + 1;
+      setMulti({ g: pg, count });
+      onChange(String(round1(pg * count)));
+    } else {
+      setMulti({ g: pg, count: 1 });
+      onChange(String(pg));
+    }
+  }
 
   return (
     <div>
@@ -61,34 +77,43 @@ export default function PortionPicker({ grams, onChange, presets }) {
       )}
 
       <div className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto">
-        {(presets?.length ? presets : GRAM_PRESETS).map(presetToObj).map((p) => (
-          <button
-            key={p.g}
-            type="button"
-            onClick={() => onChange(String(p.g))}
-            className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border py-1.5 text-sm font-medium active:bg-stone-100 ${
-              p.photo ? 'pl-1.5 pr-4' : 'px-4'
-            } ${
-              g === p.g
-                ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                : 'border-stone-200 text-stone-600'
-            }`}
-          >
-            {p.photo && (
-              <img
-                src={p.photo}
-                alt=""
-                onClick={(e) => {
-                  // тап по миниатюре — просмотр на весь экран, а не выбор порции
-                  e.stopPropagation();
-                  setViewPhoto(p.photo);
-                }}
-                className="h-7 w-7 rounded-full object-cover"
-              />
-            )}
-            {p.label ? `${p.label} · ${p.g} г` : `${p.g} г`}
-          </button>
-        ))}
+        {(presets?.length ? presets : GRAM_PRESETS).map(presetToObj).map((p) => {
+          const count =
+            multi && multi.g === p.g && g === round1(p.g * multi.count)
+              ? multi.count
+              : g === p.g
+                ? 1
+                : 0;
+          return (
+            <button
+              key={p.g}
+              type="button"
+              onClick={() => tapPreset(p.g)}
+              className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border py-1.5 text-sm font-medium active:bg-stone-100 ${
+                p.photo ? 'pl-1.5 pr-4' : 'px-4'
+              } ${
+                count > 0
+                  ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                  : 'border-stone-200 text-stone-600'
+              }`}
+            >
+              {p.photo && (
+                <img
+                  src={p.photo}
+                  alt=""
+                  onClick={(e) => {
+                    // тап по миниатюре — просмотр на весь экран, а не выбор порции
+                    e.stopPropagation();
+                    setViewPhoto(p.photo);
+                  }}
+                  className="h-7 w-7 rounded-full object-cover"
+                />
+              )}
+              {p.label ? `${p.label} · ${p.g} г` : `${p.g} г`}
+              {count > 1 && <span className="font-bold">×{count}</span>}
+            </button>
+          );
+        })}
       </div>
 
       {viewPhoto && <PhotoViewer src={viewPhoto} onClose={() => setViewPhoto(null)} />}

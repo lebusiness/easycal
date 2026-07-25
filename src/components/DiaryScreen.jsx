@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, deleteDiaryEntry } from '../db.js';
-import { toISODate, formatDateLabel, formatDateFull, shiftDate, fmt0, fmt1, formatTime, kcalFromMacros, notifyError } from '../utils.js';
+import { db, deleteDiaryEntry, updateDiaryEntry, entryToProduct, getFavoriteFor } from '../db.js';
+import { toISODate, formatDateLabel, formatDateFull, shiftDate, fmt0, fmt1, round1, formatTime, kcalFromMacros, notifyError } from '../utils.js';
+import { toast } from '../toast.js';
 import GoalsEditor from './GoalsEditor.jsx';
 import MealsEditor from './MealsEditor.jsx';
-import EntryEditor from './EntryEditor.jsx';
-import { IconChevronLeft, IconChevronRight, IconChevronDown, IconTrash, IconPlus, IconBarcode, IconSearch, IconSwap, IconPencil } from './Icons.jsx';
+import ProductDetail from './ProductDetail.jsx';
+import CompositeProductForm from './CompositeProductForm.jsx';
+import { IconChevronLeft, IconChevronRight, IconChevronDown, IconTrash, IconPlus, IconBarcode, IconSearch, IconSwap, IconPencil, IconClose, Spinner } from './Icons.jsx';
 
 export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHistory, onCreateProduct, user, onLogout }) {
   const meals = useLiveQuery(() => db.meals.orderBy('order').toArray(), []);
@@ -17,6 +19,19 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
   const [showGoals, setShowGoals] = useState(false);
   const [showMeals, setShowMeals] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
+  // Режим сборки блюда: записи дня отмечаются галочками и превращаются
+  // в состав нового составного продукта
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [composing, setComposing] = useState(null); // ингредиенты для формы блюда
+
+  // Перетаскивание записи между приёмами: долгое нажатие поднимает запись,
+  // отпускание над другим приёмом переносит её туда
+  const [drag, setDrag] = useState(null); // { entry, fromMealId, x, y, targetMealId }
+  const dragRef = useRef(null); // то же, что drag, но для обработчиков без ре-рендера
+  const mealRefs = useRef(new Map()); // meal.id → DOM-узел секции (для хит-теста)
+  const pressRef = useRef(null); // ожидание long-press: { timer, startX, startY }
+  const didDragRef = useRef(false); // подавить click, который придёт после драга
   // Режим карточки итогов: сколько съедено или сколько осталось до цели
   const [totalsMode, setTotalsMode] = useState(() => {
     try {
@@ -87,6 +102,171 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
       return next;
     });
   }
+
+  function toggleSelected(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }
+
+  // Запись дневника → ингредиент-снапшот; у старых записей КБЖУ на 100 г
+  // восстанавливаем из порции
+  function entryToIngredient(e) {
+    const per =
+      e.kcal100 != null
+        ? { kcal: e.kcal100, protein: e.protein100 ?? 0, fat: e.fat100 ?? 0, carbs: e.carbs100 ?? 0 }
+        : e.grams > 0
+          ? {
+              kcal: ((e.kcal || 0) / e.grams) * 100,
+              protein: ((e.protein || 0) / e.grams) * 100,
+              fat: ((e.fat || 0) / e.grams) * 100,
+              carbs: ((e.carbs || 0) / e.grams) * 100,
+            }
+          : { kcal: 0, protein: 0, fat: 0, carbs: 0 };
+    return {
+      name: e.name,
+      g: round1(e.grams),
+      kcal100: round1(per.kcal),
+      protein100: round1(per.protein),
+      fat100: round1(per.fat),
+      carbs100: round1(per.carbs),
+    };
+  }
+
+  function startCompose() {
+    // Отмеченные записи собираем в порядке отображения на экране
+    const picked = [];
+    for (const meal of meals ?? []) {
+      for (const e of byMeal.get(meal.id) ?? []) {
+        if (selectedIds.has(e.id)) picked.push(entryToIngredient(e));
+      }
+    }
+    if (picked.length === 0) return;
+    setComposing(picked);
+  }
+
+  // ---- Перетаскивание записей между приёмами ----
+
+  function mealAtPoint(y) {
+    for (const [id, el] of mealRefs.current) {
+      const r = el.getBoundingClientRect();
+      if (y >= r.top && y <= r.bottom) return id;
+    }
+    return null;
+  }
+
+  function handleEntryPointerDown(ev, entry, fromMealId) {
+    if (selectMode) return;
+    if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+    const target = ev.currentTarget;
+    const { pointerId, clientX, clientY } = ev;
+    didDragRef.current = false;
+    pressRef.current = {
+      startX: clientX,
+      startY: clientY,
+      timer: setTimeout(() => {
+        pressRef.current = null;
+        try {
+          // захват указателя — события идут в строку, даже когда палец над другим приёмом
+          target.setPointerCapture(pointerId);
+        } catch {
+          /* указатель уже отпущен */
+        }
+        navigator.vibrate?.(15);
+        didDragRef.current = true;
+        const d = { entry, fromMealId, x: clientX, y: clientY, targetMealId: fromMealId };
+        dragRef.current = d;
+        setDrag(d);
+      }, 350),
+    };
+  }
+
+  function handleEntryPointerMove(ev) {
+    const d = dragRef.current;
+    if (d) {
+      d.x = ev.clientX;
+      d.y = ev.clientY;
+      d.targetMealId = mealAtPoint(ev.clientY) ?? d.targetMealId;
+      setDrag({ ...d });
+      return;
+    }
+    // палец поехал до срабатывания long-press — это прокрутка, не драг
+    const p = pressRef.current;
+    if (p && (Math.abs(ev.clientX - p.startX) > 8 || Math.abs(ev.clientY - p.startY) > 8)) {
+      clearTimeout(p.timer);
+      pressRef.current = null;
+    }
+  }
+
+  function cancelPress() {
+    if (pressRef.current) {
+      clearTimeout(pressRef.current.timer);
+      pressRef.current = null;
+    }
+  }
+
+  function handleEntryPointerUp() {
+    cancelPress();
+    const d = dragRef.current;
+    if (!d) return;
+    dragRef.current = null;
+    setDrag(null);
+    if (d.targetMealId != null && d.targetMealId !== d.fromMealId) {
+      const meal = (meals ?? []).find((m) => m.id === d.targetMealId);
+      if (meal) {
+        updateDiaryEntry(d.entry.id, { mealId: meal.id, mealLabel: meal.name }).catch(notifyError);
+      }
+    }
+  }
+
+  function handleEntryPointerCancel() {
+    cancelPress();
+    if (dragRef.current) {
+      dragRef.current = null;
+      setDrag(null);
+    }
+  }
+
+  // Пока запись «в руке»: не даём странице скроллиться под пальцем и глушим
+  // контекстное меню долгого нажатия; у краёв экрана — авто-прокрутка
+  useEffect(() => {
+    if (!drag) return undefined;
+    const prevent = (ev) => ev.preventDefault();
+    document.addEventListener('touchmove', prevent, { passive: false });
+    document.addEventListener('contextmenu', prevent);
+    let raf;
+    const step = () => {
+      const d = dragRef.current;
+      if (d) {
+        const edge = 110;
+        if (d.y < edge) window.scrollBy(0, -Math.ceil((edge - d.y) / 6));
+        else if (d.y > window.innerHeight - edge) {
+          window.scrollBy(0, Math.ceil((d.y - (window.innerHeight - edge)) / 6));
+        }
+        // после прокрутки под неподвижным пальцем оказывается другой приём
+        const id = mealAtPoint(d.y);
+        if (id != null && id !== d.targetMealId) {
+          d.targetMealId = id;
+          setDrag({ ...d });
+        }
+      }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => {
+      document.removeEventListener('touchmove', prevent);
+      document.removeEventListener('contextmenu', prevent);
+      cancelAnimationFrame(raf);
+    };
+  }, [drag != null]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="mx-auto w-full max-w-md pb-28">
@@ -226,8 +406,17 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
           const goalKcal = meal.goals
             ? kcalFromMacros(meal.goals.protein, meal.goals.fat, meal.goals.carbs)
             : null;
+          const isDropTarget =
+            drag != null && drag.targetMealId === meal.id && drag.fromMealId !== meal.id;
           return (
-            <section key={meal.id} className="rounded-2xl bg-white shadow-sm">
+            <section
+              key={meal.id}
+              ref={(el) => {
+                if (el) mealRefs.current.set(meal.id, el);
+                else mealRefs.current.delete(meal.id);
+              }}
+              className={`rounded-2xl bg-white shadow-sm ${isDropTarget ? 'ring-2 ring-emerald-500' : ''}`}
+            >
               <div className="flex items-center gap-1 py-1 pl-2.5 pr-1.5">
                 <button
                   type="button"
@@ -275,30 +464,67 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
 
               {!isCollapsed && mealEntries.length > 0 && (
                 <ul className="divide-y divide-stone-100 border-t border-stone-100">
-                  {mealEntries.map((e) => (
-                    <li key={e.id} className="flex items-center gap-1 pl-3 pr-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setEditingEntry(e)}
-                        className="flex min-w-0 flex-1 items-center gap-2 py-2 text-left active:opacity-70"
-                      >
-                        <span className="min-w-0 flex-1 truncate text-sm leading-snug">{e.name}</span>
-                        {formatTime(e.addedAt) && (
-                          <span className="shrink-0 text-[0.6875rem] text-stone-400">{formatTime(e.addedAt)}</span>
+                  {mealEntries.map((e) => {
+                    const checked = selectedIds.has(e.id);
+                    return (
+                      <li key={e.id} className="flex items-center gap-1 pl-3 pr-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // клик, прилетевший после драга, — не открытие карточки
+                            if (didDragRef.current) {
+                              didDragRef.current = false;
+                              return;
+                            }
+                            if (selectMode) toggleSelected(e.id);
+                            else setEditingEntry(e);
+                          }}
+                          onPointerDown={(ev) => handleEntryPointerDown(ev, e, meal.id)}
+                          onPointerMove={handleEntryPointerMove}
+                          onPointerUp={handleEntryPointerUp}
+                          onPointerCancel={handleEntryPointerCancel}
+                          onContextMenu={(ev) => {
+                            if (dragRef.current) ev.preventDefault();
+                          }}
+                          style={{ WebkitTouchCallout: 'none' }}
+                          className={`flex min-w-0 flex-1 select-none items-center gap-2 py-2 text-left active:opacity-70 ${
+                            drag?.entry.id === e.id ? 'opacity-40' : ''
+                          }`}
+                        >
+                          {selectMode && (
+                            <span
+                              aria-hidden="true"
+                              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
+                                checked
+                                  ? 'border-emerald-600 bg-emerald-600 text-white'
+                                  : 'border-stone-300 text-transparent'
+                              }`}
+                            >
+                              <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="m5 12 5 5L20 7" />
+                              </svg>
+                            </span>
+                          )}
+                          <span className="min-w-0 flex-1 truncate text-sm leading-snug">{e.name}</span>
+                          {formatTime(e.addedAt) && (
+                            <span className="shrink-0 text-[0.6875rem] text-stone-400">{formatTime(e.addedAt)}</span>
+                          )}
+                          <span className="shrink-0 text-xs text-stone-500">{fmt1(e.grams)} г</span>
+                          <span className="shrink-0 text-[0.9375rem] font-semibold">{fmt1(e.kcal)}</span>
+                        </button>
+                        {!selectMode && (
+                          <button
+                            type="button"
+                            onClick={() => deleteDiaryEntry(e.id).catch(notifyError)}
+                            aria-label={`Удалить «${e.name}»`}
+                            className="shrink-0 rounded-full p-2 text-stone-300 active:bg-red-50 active:text-red-600"
+                          >
+                            <IconTrash className="h-[1.125rem] w-[1.125rem]" />
+                          </button>
                         )}
-                        <span className="shrink-0 text-xs text-stone-500">{fmt1(e.grams)} г</span>
-                        <span className="shrink-0 text-[0.9375rem] font-semibold">{fmt1(e.kcal)}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => deleteDiaryEntry(e.id).catch(notifyError)}
-                        aria-label={`Удалить «${e.name}»`}
-                        className="shrink-0 rounded-full p-2 text-stone-300 active:bg-red-50 active:text-red-600"
-                      >
-                        <IconTrash className="h-[1.125rem] w-[1.125rem]" />
-                      </button>
-                    </li>
-                  ))}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </section>
@@ -311,6 +537,24 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
           Записей пока нет — добавьте еду кнопкой «+» у приёма пищи
         </p>
       )}
+
+      {list.length > 0 &&
+        (selectMode ? (
+          <p className="mx-3 mt-2.5 text-center text-[0.6875rem] text-stone-400">
+            Отметьте записи галочками — из них соберётся составное блюдо
+          </p>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedIds(new Set());
+              setSelectMode(true);
+            }}
+            className="mx-auto mt-2.5 block px-3 py-1 text-[0.6875rem] font-semibold text-stone-400 active:text-emerald-700"
+          >
+            Собрать блюдо из добавленного
+          </button>
+        ))}
 
       {user && (
         <p className="mx-3 mt-4 text-center text-[0.6875rem] text-stone-400">
@@ -325,6 +569,26 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
         </p>
       )}
 
+      {selectMode ? (
+        <div className="fixed inset-x-0 bottom-0 z-10 mx-auto flex w-full max-w-md gap-2 bg-gradient-to-t from-stone-100 via-stone-100/90 to-transparent px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3">
+          <button
+            type="button"
+            onClick={startCompose}
+            disabled={selectedIds.size === 0}
+            className="min-w-0 flex-1 rounded-full bg-emerald-600 py-3.5 text-base font-semibold text-white shadow-lg shadow-emerald-600/25 active:bg-emerald-700 disabled:opacity-50"
+          >
+            Создать блюдо{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
+          </button>
+          <button
+            type="button"
+            onClick={exitSelectMode}
+            aria-label="Отменить сборку блюда"
+            className="shrink-0 rounded-full bg-white px-4 text-stone-500 shadow-lg shadow-stone-900/10 active:bg-stone-100"
+          >
+            <IconClose className="h-5 w-5" />
+          </button>
+        </div>
+      ) : (
       <div className="fixed inset-x-0 bottom-0 z-10 mx-auto flex w-full max-w-md gap-2 bg-gradient-to-t from-stone-100 via-stone-100/90 to-transparent px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3">
         <div className="flex min-w-0 flex-1 overflow-hidden rounded-full bg-emerald-600 shadow-lg shadow-emerald-600/25">
           <button
@@ -360,11 +624,84 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
           <IconBarcode className="h-6 w-6" />
         </button>
       </div>
+      )}
+
+      {drag && (
+        <div
+          className="pointer-events-none fixed z-50 flex max-w-[75vw] -translate-x-1/2 items-center gap-2 rounded-xl bg-white px-3.5 py-2.5 shadow-xl ring-1 ring-stone-200"
+          style={{ left: drag.x, top: drag.y - 56 }}
+        >
+          <span className="min-w-0 truncate text-sm">{drag.entry.name}</span>
+          <span className="shrink-0 text-xs text-stone-500">{fmt1(drag.entry.grams)} г</span>
+          {drag.targetMealId !== drag.fromMealId && (
+            <span className="shrink-0 whitespace-nowrap text-xs font-semibold text-emerald-700">
+              → {(meals ?? []).find((m) => m.id === drag.targetMealId)?.name}
+            </span>
+          )}
+        </div>
+      )}
 
       {showGoals && <GoalsEditor goals={goals} onClose={() => setShowGoals(false)} />}
       {showMeals && <MealsEditor onClose={() => setShowMeals(false)} />}
       {editingEntry && (
-        <EntryEditor entry={editingEntry} meals={meals ?? []} onClose={() => setEditingEntry(null)} />
+        <EntryDetail entry={editingEntry} meals={meals ?? []} onClose={() => setEditingEntry(null)} />
+      )}
+      {composing && (
+        <div className="fixed inset-0 z-40 overflow-y-auto overscroll-contain bg-stone-100">
+          <CompositeProductForm
+            initialIngredients={composing}
+            onBack={() => setComposing(null)}
+            onSaved={(p) => {
+              setComposing(null);
+              exitSelectMode();
+              toast(`«${p.name}» сохранено в «Свои продукты»`);
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Карточка записи дневника — тот же UI, что при добавлении продукта (избранное,
+// пресеты, правка БЖУ), но с сохранением в существующую запись
+function EntryDetail({ entry, meals, onClose }) {
+  const [product, setProduct] = useState(null);
+  const [mealId, setMealId] = useState(entry.mealId);
+
+  // Продукт строится из снапшота записи + флаг избранного и пресеты граммов
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const base = entryToProduct(entry);
+      const fav = await getFavoriteFor(base).catch(() => null);
+      if (!cancelled) setProduct(fav ? { ...base, ...fav } : base);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [entry]);
+
+  const meal = meals.find((m) => m.id === mealId) ?? meals[0] ?? null;
+
+  return (
+    <div className="fixed inset-0 z-40 overflow-y-auto overscroll-contain bg-stone-100">
+      {product ? (
+        <ProductDetail
+          product={product}
+          entry={entry}
+          date={entry.date}
+          meal={meal}
+          meals={meals}
+          onMealChange={setMealId}
+          onBack={onClose}
+          onAdded={onClose}
+          onDeleted={onClose}
+        />
+      ) : (
+        <div className="flex min-h-dvh items-center justify-center">
+          <Spinner className="h-8 w-8 text-emerald-600" />
+        </div>
       )}
     </div>
   );
