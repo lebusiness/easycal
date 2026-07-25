@@ -269,7 +269,9 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
                 </div>
               </div>
 
-              {meal.goals && showMealBars && <MealGoalStrip totals={mealTotals} goals={meal.goals} />}
+              {meal.goals && showMealBars && (
+                <MealGoalStrip totals={mealTotals} goals={meal.goals} onHide={toggleMealBars} />
+              )}
 
               {!isCollapsed && mealEntries.length > 0 && (
                 <ul className="divide-y divide-stone-100 border-t border-stone-100">
@@ -383,16 +385,22 @@ function Bar({ value, goal, color, overColor = 'bg-red-500', h = 'h-1' }) {
 
 // Компактная строка прогресса приёма: ккал + Б/Ж/У одной линией микро-баров.
 // В цель приёма ровно не попасть, поэтому перебор не красим в красный — при
-// переполнении бар лишь чуть темнеет. Прячется тапом по дневному прогрессу.
-function MealGoalStrip({ totals, goals }) {
+// переполнении бар лишь чуть темнеет. Тап по полоске прячет прогресс у всех
+// приёмов; вернуть — тапом по дневному прогрессу в карточке «Итого».
+function MealGoalStrip({ totals, goals, onHide }) {
   const goalKcal = kcalFromMacros(goals.protein, goals.fat, goals.carbs);
   return (
-    <div className="grid grid-cols-4 gap-2 border-t border-stone-100 px-3 pb-2 pt-1.5">
+    <button
+      type="button"
+      onClick={onHide}
+      aria-label="Скрыть прогресс приёмов"
+      className="grid w-full grid-cols-4 gap-2 border-t border-stone-100 px-3 pb-2 pt-1.5 text-left active:opacity-70"
+    >
       <Micro label="ккал" value={totals.kcal} goal={goalKcal} color="bg-emerald-500" overColor="bg-emerald-600" fmt={fmt0} />
       <Micro label="Б" value={totals.protein} goal={goals.protein} color="bg-sky-500" overColor="bg-sky-600" />
       <Micro label="Ж" value={totals.fat} goal={goals.fat} color="bg-amber-500" overColor="bg-amber-600" />
       <Micro label="У" value={totals.carbs} goal={goals.carbs} color="bg-rose-500" overColor="bg-rose-600" />
-    </div>
+    </button>
   );
 }
 

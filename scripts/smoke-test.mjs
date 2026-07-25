@@ -258,7 +258,7 @@ if (!bodyText().includes('34/150')) throw new Error('Белки после ре�
 if (!bodyText().includes('34/30')) throw new Error('Перебор белка в приёме не показался (ожидалось 34/30)');
 console.log('✓ Редактор записи: 200 г → 240 ккал, белки 34 (в приёме перебор 34/30), время редактируемо');
 
-// --- Прогресс приёмов скрывается тапом по полоске и возвращается тапом по цифрам
+// --- Прогресс приёмов: скрытие тапом по дневному прогрессу и возврат
 findByAria('Скрыть прогресс приёмов').click();
 await sleep(150);
 if (bodyText().includes('34/30')) throw new Error('Прогресс приёма не скрылся');
@@ -266,7 +266,17 @@ if (!bodyText().includes('240/290')) throw new Error('Компактные кк�
 findByAria('Показать прогресс приёмов').click();
 await sleep(150);
 if (!bodyText().includes('34/30')) throw new Error('Прогресс приёма не вернулся');
-console.log('✓ Прогресс приёмов прячется тапом (остаются цифры в шапке) и возвращается');
+
+// --- ...и скрытие тапом по самой полоске приёма (вторая кнопка с этим aria-label)
+const hideBtns = [...window.document.querySelectorAll('button[aria-label="Скрыть прогресс приёмов"]')];
+if (hideBtns.length < 2) throw new Error('Полоска прогресса приёма не кликабельна');
+hideBtns[1].click();
+await sleep(150);
+if (bodyText().includes('34/30')) throw new Error('Тап по полоске не скрыл прогресс');
+findByAria('Показать прогресс приёмов').click();
+await sleep(150);
+if (!bodyText().includes('34/30')) throw new Error('Прогресс приёма не вернулся после тапа по полоске');
+console.log('✓ Прогресс приёмов прячется тапом по дневному прогрессу и по полоске, возвращается');
 
 // --- История: график и значения выбранного дня
 findButton('История').click();
