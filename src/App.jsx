@@ -3,6 +3,7 @@ import DiaryScreen from './components/DiaryScreen.jsx';
 import AddFoodScreen from './components/AddFoodScreen.jsx';
 import HistoryScreen from './components/HistoryScreen.jsx';
 import AuthScreen from './components/AuthScreen.jsx';
+import Toasts from './components/Toasts.jsx';
 import { Spinner } from './components/Icons.jsx';
 import { openUserDb, closeUserDb, pullSnapshot } from './db.js';
 import { getSessionUser, clearSession } from './auth.js';
@@ -75,6 +76,7 @@ export default function App() {
           onLogout={handleLogout}
         />
       )}
+      <Toasts />
     </div>
   );
 }

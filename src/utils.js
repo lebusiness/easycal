@@ -1,3 +1,5 @@
+import { toast } from './toast.js';
+
 export function toISODate(d) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -47,9 +49,9 @@ export function kcalFromMacros(protein, fat, carbs) {
   return Math.round((protein ?? 0) * 4 + (fat ?? 0) * 9 + (carbs ?? 0) * 4);
 }
 
-// Для действий без своего места под сообщение об ошибке (удаление, звёздочки)
+// Для действий без своего места под сообщение об ошибке (экспорт, редкие локальные сбои)
 export function notifyError(e) {
-  window.alert(e?.message || 'Что-то пошло не так. Проверьте связь с сервером.');
+  toast(e?.message || 'Что-то пошло не так. Проверьте связь с сервером.');
 }
 
 export function formatTime(iso) {
