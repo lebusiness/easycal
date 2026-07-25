@@ -61,6 +61,7 @@ export default function App() {
           initialMealId={screen.mealId}
           autoScan={screen.scan}
           autoFocusSearch={screen.focus}
+          autoManual={screen.manual}
           onClose={() => setScreen({ name: 'diary' })}
         />
       ) : screen.name === 'history' ? (
@@ -71,6 +72,7 @@ export default function App() {
           onDateChange={setDate}
           onAdd={(mealId, focus) => setScreen({ name: 'add', mealId, focus: !!focus })}
           onScan={() => setScreen({ name: 'add', mealId: null, scan: true })}
+          onCreateProduct={() => setScreen({ name: 'add', mealId: null, manual: true })}
           onHistory={() => setScreen({ name: 'history' })}
           user={user}
           onLogout={handleLogout}

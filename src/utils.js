@@ -61,6 +61,10 @@ export function formatTime(iso) {
   return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
 
+// Пресет порции: старый формат — просто число граммов, новый — объект
+// { g, label?, photo? } (photo — маленький data-URL, живёт прямо в данных)
+export const presetToObj = (p) => (typeof p === 'number' ? { g: p } : p);
+
 export function fmt0(n) {
   return n == null ? '—' : Math.round(n).toLocaleString('ru-RU');
 }

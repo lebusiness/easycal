@@ -8,6 +8,11 @@ import { useEffect, useRef } from 'react';
 // Закрытие кнопкой в UI тоже идёт через историю — стек всегда консистентен.
 
 const handlers = [];
+// Экраны, закрытые из UI, чей history.back() отложен до микротаска. Если в том же
+// коммите React монтируется экран-замена (карточка → форма редактирования), он
+// переиспользует запись истории закрывшегося — иначе back() и pushState наперегонки
+// ломают стек, и новый экран мгновенно закрывается пришедшим popstate.
+let pendingPop = 0;
 let initialized = false;
 
 function ensureInit() {
@@ -35,14 +40,28 @@ export function useBackClose(onClose) {
   useEffect(() => {
     ensureInit();
     handlers.push(ref);
-    window.history.pushState({ appDepth: handlers.length }, '');
+    if (pendingPop > 0) {
+      // Замена экрана в одном коммите: запись истории предыдущего ещё на месте,
+      // глубина совпадает — просто занимаем её вместо новой pushState
+      pendingPop -= 1;
+    } else {
+      window.history.pushState({ appDepth: handlers.length }, '');
+    }
     return () => {
       const i = handlers.indexOf(ref);
       if (i !== -1) {
-        // Экран закрыли из UI — снимаем регистрацию и съедаем запись истории.
-        // popstate придёт уже с совпадающей глубиной и ничего не тронет.
+        // Экран закрыли из UI — снимаем регистрацию, а запись истории съедаем
+        // отложенно: эффект монтирования экрана-замены успеет её переиспользовать.
+        // Если замены не было, back() уйдёт, и popstate придёт с совпадающей
+        // глубиной, ничего не тронув.
         handlers.splice(i, 1);
-        window.history.back();
+        pendingPop += 1;
+        queueMicrotask(() => {
+          if (pendingPop > 0) {
+            pendingPop -= 1;
+            window.history.back();
+          }
+        });
       }
     };
     // регистрация — один раз на время жизни экрана

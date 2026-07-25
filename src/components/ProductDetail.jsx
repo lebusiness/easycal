@@ -6,12 +6,15 @@ import {
   toggleMyProductFavorite,
   saveOverride,
   updateFavoritePresets,
+  updateMyProduct,
 } from '../db.js';
-import { parseNum, round1, fmt0, kcalFromMacros, notifyError } from '../utils.js';
+import { parseNum, round1, fmt0, kcalFromMacros, notifyError, presetToObj } from '../utils.js';
+import { fileToThumb } from '../image.js';
 import Header from './Header.jsx';
 import PortionPicker from './PortionPicker.jsx';
 import GramsWheel from './GramsWheel.jsx';
-import { IconStar } from './Icons.jsx';
+import PhotoViewer from './PhotoViewer.jsx';
+import { IconStar, IconCamera, IconTrash } from './Icons.jsx';
 import { useBackClose } from '../navigation.js';
 
 const MACROS = [
@@ -20,7 +23,7 @@ const MACROS = [
   { key: 'carbs100', label: 'Углеводы' },
 ];
 
-export default function ProductDetail({ product, date, meal, meals, onMealChange, onBack, onAdded }) {
+export default function ProductDetail({ product, date, meal, meals, onMealChange, onEdit, onBack, onAdded }) {
   useBackClose(onBack);
   // Значения из OFF бывают вида 7.699999809 — приводим к одному знаку
   const [vals, setVals] = useState(() =>
@@ -33,8 +36,13 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
   const [saving, setSaving] = useState(false);
   const [favSaved, setFavSaved] = useState(!!product.favorite);
   const [favId, setFavId] = useState(product.favId ?? null);
-  const [presets, setPresets] = useState(product.presets ?? null);
+  // Пресеты нормализуем к объектам { g, label?, photo? } (старый формат — числа)
+  const [presets, setPresets] = useState(() =>
+    product.presets?.length ? product.presets.map(presetToObj) : null
+  );
+  const [editingPresetG, setEditingPresetG] = useState(null); // граммы редактируемого пресета
   const [patchSaved, setPatchSaved] = useState(false);
+  const [productSaved, setProductSaved] = useState(false); // БЖУ записаны в свой продукт
 
   const per100 = {
     protein: parseNum(vals.protein100),
@@ -57,6 +65,13 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
   const portion = (v) => (v == null || g == null || g <= 0 ? null : (v * g) / 100);
 
   const anyMissing = MACROS.some((m) => product[m.key] == null);
+
+  const isMine = product.source === 'mine' && product.id != null;
+
+  // Управление пресетами прямо в карточке — только для избранных продуктов из базы:
+  // у них нет формы редактирования. Свои продукты настраиваются через «Редактировать»,
+  // а здесь пресеты просто выбираются в списке порций.
+  const canEditPresets = favSaved && !isMine;
 
   function currentProduct() {
     return {
@@ -140,13 +155,26 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
   function addCurrentPreset() {
     if (g == null || g <= 0) return;
     const v = Math.round(g);
-    const next = [...new Set([...(presets ?? []), v])].sort((a, b) => a - b);
+    if ((presets ?? []).some((p) => p.g === v)) return;
+    const next = [...(presets ?? []), { g: v }].sort((a, b) => a.g - b.g);
     savePresets(next);
   }
 
-  function removePreset(v) {
-    const next = (presets ?? []).filter((x) => x !== v);
+  function removePreset(gv) {
+    const next = (presets ?? []).filter((p) => p.g !== gv);
     savePresets(next.length ? next : null);
+  }
+
+  // Подпись и фото пресета (например, «большой банан» + снимок)
+  function updatePreset(gv, changes) {
+    const next = (presets ?? []).map((p) => {
+      if (p.g !== gv) return p;
+      const merged = { g: p.g, ...changes };
+      if (!merged.label) delete merged.label;
+      if (!merged.photo) delete merged.photo;
+      return merged;
+    });
+    savePresets(next);
   }
 
   async function handlePatch() {
@@ -159,6 +187,23 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
         carbs100: p.carbs100,
       });
       setPatchSaved(true);
+    } catch (e) {
+      notifyError(e);
+    }
+  }
+
+  // Записать изменённые БЖУ в сам свой продукт (по умолчанию они действуют
+  // только на текущую запись дневника)
+  async function handleSaveToProduct() {
+    try {
+      const p = currentProduct();
+      await updateMyProduct(product.id, {
+        kcal100: p.kcal100,
+        protein100: p.protein100,
+        fat100: p.fat100,
+        carbs100: p.carbs100,
+      });
+      setProductSaved(true);
     } catch (e) {
       notifyError(e);
     }
@@ -221,6 +266,7 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
                     onChange={(v) => {
                       setVals((prev) => ({ ...prev, [m.key]: v }));
                       setPatchSaved(false);
+                      setProductSaved(false);
                     }}
                     min={0}
                     max={100}
@@ -233,7 +279,11 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
           </div>
           <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
             <span className="text-[0.6875rem] text-stone-400">
-              {anyMissing ? 'Нет части данных — выставьте БЖУ (на 100 г)' : 'На 100 г'}
+              {anyMissing
+                ? 'Нет части данных — выставьте БЖУ (на 100 г)'
+                : dirty
+                  ? 'БЖУ изменены — только для этой записи'
+                  : 'На 100 г'}
             </span>
             {dirty && product.barcode && product.source !== 'mine' && (
               <button
@@ -249,6 +299,31 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
                 {patchSaved ? '✓ Всегда с этими БЖУ' : 'Всегда с этими БЖУ'}
               </button>
             )}
+            {isMine &&
+              (dirty ? (
+                <button
+                  type="button"
+                  onClick={handleSaveToProduct}
+                  disabled={productSaved}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold active:bg-stone-50 ${
+                    productSaved
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                      : 'border-stone-200 text-stone-600'
+                  }`}
+                >
+                  {productSaved ? '✓ Сохранено в продукт' : 'Сохранить в продукт'}
+                </button>
+              ) : (
+                onEdit && (
+                  <button
+                    type="button"
+                    onClick={() => onEdit({ ...product, presets, favorite: favSaved })}
+                    className="rounded-full border border-stone-200 px-3 py-1.5 text-xs font-semibold text-stone-600 active:bg-stone-50"
+                  >
+                    Редактировать
+                  </button>
+                )
+              ))}
           </div>
         </section>
 
@@ -274,20 +349,32 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
 
           <PortionPicker grams={grams} onChange={setGrams} presets={presets} />
 
-          {favSaved && (
+          {canEditPresets && (
             <div className="no-scrollbar mt-2.5 flex items-center gap-1.5 overflow-x-auto">
               <span className="shrink-0 text-xs text-stone-500">Пресеты:</span>
-              {(presets ?? []).map((v) => (
+              {(presets ?? []).map((p) => (
                 <span
-                  key={v}
-                  className="flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded-full bg-amber-50 py-1 pl-3 pr-1 text-sm font-medium text-amber-800"
+                  key={p.g}
+                  className="flex shrink-0 items-center whitespace-nowrap rounded-full bg-amber-50 py-1 pr-1 text-sm font-medium text-amber-800"
                 >
-                  {v} г
                   <button
                     type="button"
-                    onClick={() => removePreset(v)}
-                    aria-label={`Убрать пресет ${v} г`}
-                    className="rounded-full p-1 text-amber-600 active:bg-amber-100"
+                    onClick={() => setEditingPresetG(p.g)}
+                    aria-label={`Настроить пресет ${p.g} г — фото и подпись`}
+                    className={`flex items-center gap-1.5 active:opacity-70 ${p.photo ? 'pl-1' : 'pl-3'}`}
+                  >
+                    {p.photo ? (
+                      <img src={p.photo} alt="" className="h-6 w-6 rounded-full object-cover" />
+                    ) : (
+                      <IconCamera className="h-3.5 w-3.5 text-amber-500" />
+                    )}
+                    {p.label ? `${p.label} · ${p.g} г` : `${p.g} г`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removePreset(p.g)}
+                    aria-label={`Убрать пресет ${p.g} г`}
+                    className="ml-0.5 rounded-full p-1 text-amber-600 active:bg-amber-100"
                   >
                     <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
                       <path d="M6 6l12 12M18 6 6 18" />
@@ -295,7 +382,7 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
                   </button>
                 </span>
               ))}
-              {g != null && g > 0 && !(presets ?? []).includes(Math.round(g)) && (
+              {g != null && g > 0 && !(presets ?? []).some((p) => p.g === Math.round(g)) && (
                 <button
                   type="button"
                   onClick={addCurrentPreset}
@@ -325,6 +412,128 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
           </button>
         </section>
       </div>
+
+      {editingPresetG != null && (
+        <PresetEditor
+          preset={(presets ?? []).find((p) => p.g === editingPresetG) ?? { g: editingPresetG }}
+          onSave={(changes) => updatePreset(editingPresetG, changes)}
+          onClose={() => setEditingPresetG(null)}
+        />
+      )}
     </div>
+  );
+}
+
+// Настройка пресета порции: подпись («большой банан») и фото-миниатюра
+function PresetEditor({ preset, onSave, onClose }) {
+  useBackClose(onClose);
+  const [label, setLabel] = useState(preset.label ?? '');
+  const [photo, setPhoto] = useState(preset.photo ?? null);
+  const [processing, setProcessing] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
+
+  async function applyFile(file) {
+    setProcessing(true);
+    try {
+      setPhoto(await fileToThumb(file));
+    } catch (err) {
+      notifyError(err);
+    }
+    setProcessing(false);
+  }
+
+  function handleFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) applyFile(file);
+  }
+
+  function handleSave() {
+    onSave({ label: label.trim(), photo });
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={onClose}>
+      <div
+        className="w-full max-w-md rounded-t-2xl bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-base font-semibold">Пресет {preset.g} г</h3>
+        <p className="mt-0.5 text-xs text-stone-500">
+          Подпись и фото помогут узнавать порцию — например, «большой банан»
+        </p>
+
+        <div className="mt-3 flex items-center gap-3">
+          {photo ? (
+            // Тап по фото — просмотр на весь экран (там же замена и удаление)
+            <button type="button" onClick={() => setViewerOpen(true)} className="relative shrink-0 active:opacity-70">
+              <img src={photo} alt="Фото пресета" className="h-20 w-20 rounded-xl object-cover" />
+              {processing && <ProcessingOverlay />}
+            </button>
+          ) : (
+            <label className="relative shrink-0 cursor-pointer">
+              <span className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-stone-300 text-stone-400">
+                <IconCamera className="h-6 w-6" />
+                <span className="text-[0.625rem] font-medium">Фото</span>
+              </span>
+              <input type="file" accept="image/*" onChange={handleFile} className="sr-only" />
+              {processing && <ProcessingOverlay />}
+            </label>
+          )}
+
+          <div className="min-w-0 flex-1">
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-stone-500">Подпись</span>
+              <input
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="Например, большой"
+                className="w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5 text-[0.9375rem] outline-none placeholder:text-stone-400 focus:border-emerald-500"
+              />
+            </label>
+            {photo && (
+              <button
+                type="button"
+                onClick={() => setPhoto(null)}
+                className="mt-1.5 flex items-center gap-1 px-1 text-xs font-semibold text-stone-500 active:text-red-600"
+              >
+                <IconTrash className="h-3.5 w-3.5" />
+                Убрать фото
+              </button>
+            )}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={processing}
+          className="mt-4 w-full rounded-full bg-emerald-600 py-3 text-[0.9375rem] font-semibold text-white active:bg-emerald-700 disabled:opacity-60"
+        >
+          Сохранить
+        </button>
+      </div>
+
+      {viewerOpen && photo && (
+        <PhotoViewer
+          src={photo}
+          onClose={() => setViewerOpen(false)}
+          onPickFile={applyFile}
+          onRemove={() => setPhoto(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ProcessingOverlay() {
+  return (
+    <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-white/60">
+      <svg viewBox="0 0 24 24" className="h-6 w-6 animate-spin text-emerald-600" fill="none" aria-hidden="true">
+        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" opacity="0.25" />
+        <path d="M22 12A10 10 0 0 0 12 2" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+      </svg>
+    </span>
   );
 }

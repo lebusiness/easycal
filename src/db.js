@@ -352,7 +352,7 @@ export async function findMyProductByBarcode(barcode) {
   return snap ? favSnapshotToResult(snap) : null;
 }
 
-export async function addMyProduct({ name, description, barcode, kcal100, protein100, fat100, carbs100 }) {
+export async function addMyProduct({ name, description, barcode, kcal100, protein100, fat100, carbs100, favorite = false, presets = null }) {
   const body = {
     name,
     description: description || null,
@@ -361,12 +361,21 @@ export async function addMyProduct({ name, description, barcode, kcal100, protei
     protein100,
     fat100,
     carbs100,
-    favorite: 0,
+    favorite: favorite ? 1 : 0,
+    presets,
   };
   const local = { ...body, id: newTempId() };
   await db.myProducts.put(local);
   backgroundCreate('сохранить продукт', db.myProducts, local, () => api.post('/myProducts', body));
   return myProductToResult(local);
+}
+
+export async function updateMyProduct(id, changes) {
+  await backgroundUpdate('изменить продукт', db.myProducts, '/myProducts', id, changes);
+}
+
+export async function deleteMyProduct(id) {
+  await backgroundDelete('удалить продукт', db.myProducts, '/myProducts', id);
 }
 
 // ---------- Избранное ----------
@@ -425,11 +434,12 @@ export async function getFavoriteProducts() {
   return [...mine.map(myProductToResult), ...snaps.map(favSnapshotToResult)];
 }
 
-// Данные избранного для продукта (флаг + пресеты граммов) — по своему id или штрихкоду
+// Данные избранного для продукта (флаг + пресеты граммов) — по своему id или штрихкоду.
+// У своих продуктов пресеты живут на самой записи и работают и без звёздочки.
 export async function getFavoriteFor(product) {
   if (product.source === 'mine' && product.id != null) {
     const p = await db.myProducts.get(product.id);
-    return p?.favorite ? { favorite: true, presets: p.presets ?? null } : null;
+    return p ? { favorite: !!p.favorite, presets: p.presets ?? null } : null;
   }
   if (product.barcode) {
     const s = await db.favorites.where('barcode').equals(product.barcode).first();

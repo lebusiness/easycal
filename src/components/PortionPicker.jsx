@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import GramsWheel from './GramsWheel.jsx';
-import { parseNum, fmt0 } from '../utils.js';
+import PhotoViewer from './PhotoViewer.jsx';
+import { parseNum, fmt0, presetToObj } from '../utils.js';
 
 const GRAM_PRESETS = [50, 100, 150, 200];
 
@@ -26,6 +27,7 @@ export default function PortionPicker({ grams, onChange, presets }) {
   }
 
   const g = parseNum(grams);
+  const [viewPhoto, setViewPhoto] = useState(null); // фото пресета на весь экран
 
   return (
     <div>
@@ -59,21 +61,37 @@ export default function PortionPicker({ grams, onChange, presets }) {
       )}
 
       <div className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto">
-        {(presets?.length ? presets : GRAM_PRESETS).map((v) => (
+        {(presets?.length ? presets : GRAM_PRESETS).map(presetToObj).map((p) => (
           <button
-            key={v}
+            key={p.g}
             type="button"
-            onClick={() => onChange(String(v))}
-            className={`shrink-0 whitespace-nowrap rounded-full border px-4 py-1.5 text-sm font-medium active:bg-stone-100 ${
-              g === v
+            onClick={() => onChange(String(p.g))}
+            className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border py-1.5 text-sm font-medium active:bg-stone-100 ${
+              p.photo ? 'pl-1.5 pr-4' : 'px-4'
+            } ${
+              g === p.g
                 ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
                 : 'border-stone-200 text-stone-600'
             }`}
           >
-            {v} г
+            {p.photo && (
+              <img
+                src={p.photo}
+                alt=""
+                onClick={(e) => {
+                  // тап по миниатюре — просмотр на весь экран, а не выбор порции
+                  e.stopPropagation();
+                  setViewPhoto(p.photo);
+                }}
+                className="h-7 w-7 rounded-full object-cover"
+              />
+            )}
+            {p.label ? `${p.label} · ${p.g} г` : `${p.g} г`}
           </button>
         ))}
       </div>
+
+      {viewPhoto && <PhotoViewer src={viewPhoto} onClose={() => setViewPhoto(null)} />}
     </div>
   );
 }

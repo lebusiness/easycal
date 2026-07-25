@@ -5,9 +5,9 @@ import { toISODate, formatDateLabel, formatDateFull, shiftDate, fmt0, fmt1, form
 import GoalsEditor from './GoalsEditor.jsx';
 import MealsEditor from './MealsEditor.jsx';
 import EntryEditor from './EntryEditor.jsx';
-import { IconChevronLeft, IconChevronRight, IconChevronDown, IconTrash, IconPlus, IconBarcode, IconSearch, IconSwap } from './Icons.jsx';
+import { IconChevronLeft, IconChevronRight, IconChevronDown, IconTrash, IconPlus, IconBarcode, IconSearch, IconSwap, IconPencil } from './Icons.jsx';
 
-export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHistory, user, onLogout }) {
+export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHistory, onCreateProduct, user, onLogout }) {
   const meals = useLiveQuery(() => db.meals.orderBy('order').toArray(), []);
   const entries = useLiveQuery(() => db.diary.where('date').equals(date).toArray(), [date]);
   const goalsRec = useLiveQuery(() => db.settings.get('goals'), []);
@@ -291,9 +291,17 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
         </div>
         <button
           type="button"
+          onClick={onCreateProduct}
+          aria-label="Создать свой продукт"
+          className="shrink-0 rounded-full bg-white px-4 text-emerald-600 shadow-lg shadow-stone-900/10 active:bg-stone-100"
+        >
+          <IconPencil className="h-5 w-5" />
+        </button>
+        <button
+          type="button"
           onClick={onScan}
           aria-label="Сканировать штрихкод"
-          className="shrink-0 rounded-full bg-white px-5 text-emerald-600 shadow-lg shadow-stone-900/10 active:bg-stone-100"
+          className="shrink-0 rounded-full bg-white px-4 text-emerald-600 shadow-lg shadow-stone-900/10 active:bg-stone-100"
         >
           <IconBarcode className="h-6 w-6" />
         </button>

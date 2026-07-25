@@ -10,6 +10,7 @@ import {
   getOverridesMap,
   applyOverride,
   toggleMyProductFavorite,
+  deleteMyProduct,
   removeFavorite,
   getFavoriteFor,
   guessMeal,
@@ -21,7 +22,7 @@ import { fmt0 } from '../utils.js';
 import Header from './Header.jsx';
 import ProductDetail from './ProductDetail.jsx';
 import ManualProductForm from './ManualProductForm.jsx';
-import { IconBarcode, IconSearch, IconStar, Spinner } from './Icons.jsx';
+import { IconBarcode, IconPencil, IconSearch, IconStar, IconTrash, Spinner } from './Icons.jsx';
 
 // html5-qrcode тяжёлый — загружаем чанк только при открытии сканера
 const BarcodeScanner = lazy(() => import('./BarcodeScanner.jsx'));
@@ -32,10 +33,11 @@ const TABS = [
   { key: 'mine', label: 'Свои' },
 ];
 
-export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocusSearch, onClose }) {
+export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocusSearch, autoManual, onClose }) {
   const meals = useLiveQuery(() => db.meals.orderBy('order').toArray(), []);
 
-  const [view, setView] = useState('search'); // search | detail | manual
+  // autoManual — кнопка «Свой продукт» на главном экране: сразу открываем форму
+  const [view, setView] = useState(autoManual ? 'manual' : 'search'); // search | detail | manual
   const [mealId, setMealId] = useState(initialMealId ?? null);
   const [tab, setTab] = useState('frequent');
   const [query, setQuery] = useState('');
@@ -50,6 +52,9 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocus
   const [barcodeState, setBarcodeState] = useState(null); // { status: 'loading' | 'error', barcode }
   const [selected, setSelected] = useState(null);
   const [manualPrefill, setManualPrefill] = useState(null);
+  // Свой продукт в режиме редактирования + откуда открыли (карточка или список) —
+  // чтобы после сохранения/отмены вернуться туда же
+  const [editing, setEditing] = useState(null); // { product, from: 'detail' | 'list' }
   const [tabRefresh, setTabRefresh] = useState(0);
 
   useBackClose(onClose);
@@ -118,6 +123,14 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocus
 
   function openManual(prefill) {
     setManualPrefill(prefill ?? null);
+    setEditing(null);
+    setBarcodeState(null);
+    setView('manual');
+  }
+
+  function openEditor(product, from = 'detail') {
+    setManualPrefill(null);
+    setEditing({ product, from });
     setBarcodeState(null);
     setView('manual');
   }
@@ -166,6 +179,7 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocus
         meal={currentMeal}
         meals={meals ?? []}
         onMealChange={(id) => setMealId(id)}
+        onEdit={openEditor}
         onBack={() => {
           setTabRefresh((t) => t + 1);
           setView('search');
@@ -179,8 +193,36 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocus
     return (
       <ManualProductForm
         prefill={manualPrefill}
-        onBack={() => setView('search')}
-        onSaved={(p) => openDetail(p)}
+        product={editing?.product}
+        onBack={() => {
+          if (editing) {
+            // назад из редактирования — туда, откуда открыли
+            const returnTo = editing.from === 'detail' && selected ? 'detail' : 'search';
+            setEditing(null);
+            setView(returnTo);
+          } else if (autoManual) {
+            onClose();
+          } else {
+            setView('search');
+          }
+        }}
+        onSaved={(p) => {
+          const fromList = editing?.from === 'list';
+          setEditing(null);
+          if (fromList) {
+            // редактировали из списка «Свои» — возвращаемся в обновлённый список
+            setTabRefresh((t) => t + 1);
+            setView('search');
+          } else {
+            openDetail(p);
+          }
+        }}
+        onDeleted={() => {
+          setEditing(null);
+          setSelected(null);
+          setTabRefresh((t) => t + 1);
+          setView('search');
+        }}
       />
     );
   }
@@ -299,6 +341,7 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocus
             mealLabel={currentMeal?.name ?? null}
             refreshKey={tabRefresh}
             onSelect={openDetail}
+            onEdit={openEditor}
             onNewProduct={() => openManual(null)}
           />
         ) : (
@@ -402,7 +445,7 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocus
   );
 }
 
-function TabsView({ tab, onTab, mealLabel, refreshKey, onSelect, onNewProduct }) {
+function TabsView({ tab, onTab, mealLabel, refreshKey, onSelect, onEdit, onNewProduct }) {
   const [items, setItems] = useState(null);
   const [reload, setReload] = useState(0);
 
@@ -435,6 +478,12 @@ function TabsView({ tab, onTab, mealLabel, refreshKey, onSelect, onNewProduct })
     } else if (product.favorite) {
       await removeFavorite(product);
     }
+    setReload((r) => r + 1);
+  }
+
+  async function handleDelete(product) {
+    if (!window.confirm(`Удалить «${product.name}» из своих продуктов?`)) return;
+    await deleteMyProduct(product.id);
     setReload((r) => r + 1);
   }
 
@@ -478,6 +527,8 @@ function TabsView({ tab, onTab, mealLabel, refreshKey, onSelect, onNewProduct })
               topMeal={item.topMeal}
               showStar={tab === 'mine' || tab === 'favorites'}
               onToggleFavorite={() => handleToggleFavorite(item.product)}
+              onEdit={tab === 'mine' ? () => onEdit(item.product, 'list') : null}
+              onDelete={tab === 'mine' ? () => handleDelete(item.product) : null}
               onSelect={onSelect}
             />
           ))
@@ -506,7 +557,7 @@ function Section({ title, children }) {
   );
 }
 
-function ProductRow({ product, topMeal, showStar, onToggleFavorite, onSelect }) {
+function ProductRow({ product, topMeal, showStar, onToggleFavorite, onEdit, onDelete, onSelect }) {
   const meta = [product.brand ?? product.description, topMeal ? `чаще: ${topMeal}` : null]
     .filter(Boolean)
     .join(' · ');
@@ -552,6 +603,26 @@ function ProductRow({ product, topMeal, showStar, onToggleFavorite, onSelect }) 
           }`}
         >
           <IconStar className="h-5 w-5" filled={!!product.favorite} />
+        </button>
+      )}
+      {onEdit && (
+        <button
+          type="button"
+          onClick={onEdit}
+          aria-label={`Редактировать «${product.name}»`}
+          className="shrink-0 rounded-full p-1.5 text-stone-300 active:bg-stone-100 active:text-stone-600"
+        >
+          <IconPencil className="h-[1.125rem] w-[1.125rem]" />
+        </button>
+      )}
+      {onDelete && (
+        <button
+          type="button"
+          onClick={onDelete}
+          aria-label={`Удалить «${product.name}»`}
+          className="shrink-0 rounded-full p-1.5 text-stone-300 active:bg-red-50 active:text-red-600"
+        >
+          <IconTrash className="h-[1.125rem] w-[1.125rem]" />
         </button>
       )}
     </div>

@@ -177,10 +177,15 @@ await sleep(300);
 findButton('+ Новый продукт').click();
 await sleep(200);
 setInput(inputByLabel('Название'), 'Творог 5%');
+// Описание и штрихкод спрятаны за кнопками «+ …» — раскрываем по очереди
+findButton('+ Описание').click();
+await sleep(100);
 setInput(inputByLabel('Описание'), 'тестовое описание');
 clickWheelValue('Белки на 100 г', 17);
 clickWheelValue('Жиры на 100 г', 4);
 clickWheelValue('Углеводы на 100 г', 4);
+findButton('+ Штрихкод').click();
+await sleep(100);
 setInput(inputByLabel('Штрихкод'), '4600000000001');
 await sleep(100);
 // 17*4 + 4*9 + 4*4 = 68+36+16 = 120 (плитка «Ккал» обновляется сама)
@@ -282,20 +287,37 @@ await sleep(300);
 if (!bodyText().includes('Творог 5%')) throw new Error('Продукт не появился в «Избранном»');
 console.log('✓ Избранное: звёздочка добавляет продукт во вкладку «Избранное»');
 
-// --- Пресеты граммов у избранного продукта
+// --- Пресеты порций своего продукта: добавляются через «Редактировать»
 findButton('Творог 5%').click();
 await sleep(400);
-if (!bodyText().includes('Пресеты:')) throw new Error('Нет блока пресетов у избранного продукта');
-findByAria('Добавить пресет').click(); // + 100 г (текущие граммы)
+if (bodyText().includes('Пресеты:')) {
+  throw new Error('У своего продукта в карточке не должно быть блока «Пресеты:»');
+}
+findButton('Редактировать').click();
 await sleep(300);
-findByAria('Убрать пресет 100 г');
+findButton('+ Добавить порцию').click();
+await sleep(150);
+const portionLabel = [...window.document.querySelectorAll('input')].find(
+  (i) => i.placeholder === 'Название: большой…'
+);
+const portionGrams = [...window.document.querySelectorAll('input')].find(
+  (i) => i.placeholder === 'вес, г'
+);
+if (!portionLabel || !portionGrams) throw new Error('Строка порции в редакторе не появилась');
+setInput(portionLabel, 'тест');
+setInput(portionGrams, '100');
+findButton('Сохранить изменения').click();
+await sleep(400);
+if (!bodyText().includes('тест · 100 г')) {
+  throw new Error('Пресет с подписью не показался в выборе порции');
+}
 // персистентность: выйти и открыть заново
 findByAria('Назад').click();
 await sleep(300);
 findButton('Творог 5%').click();
 await sleep(400);
-findByAria('Убрать пресет 100 г');
-console.log('✓ Пресеты граммов: добавляются у избранного и сохраняются (100 г)');
+if (!bodyText().includes('тест · 100 г')) throw new Error('Пресет не сохранился');
+console.log('✓ Пресеты порций: добавляются в редакторе продукта и сохраняются (тест · 100 г)');
 
 // --- Выход и повторный вход: данные под аккаунтом
 findByAria('Назад').click(); // карточка → поиск
