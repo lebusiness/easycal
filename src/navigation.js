@@ -107,45 +107,76 @@ export function useScrollToAction() {
   return ref;
 }
 
-// Свайп от левого края → «назад» (важно для iOS-PWA, где нет системного жеста)
+// Свайп от левого края → «назад» (важно для iOS-PWA, где нет системного жеста).
+//
+// Чтобы жест не срабатывал от случайных касаний, он намеренно строгий:
+// - решение принимается только при ОТПУСКАНИИ пальца, а не посреди движения —
+//   можно передумать и вернуть палец назад;
+// - нужна длинная протяжка (~полэкрана), короткие движения ничего не листают;
+// - следим за конкретным пальцем: второй палец на экране отменяет жест;
+// - ранний уход вертикально — это скролл, жест отменяется;
+// - если касание перехватила другая механика (драг записи между приёмами
+//   гасит touchmove через preventDefault) — жест тоже отменяется.
 export function useEdgeSwipeBack() {
   useEffect(() => {
+    let touchId = null; // identifier отслеживаемого пальца; null — жеста нет
     let startX = 0;
     let startY = 0;
-    let tracking = false;
+
+    const findTouch = (list, id) => {
+      for (let i = 0; i < list.length; i++) {
+        if (list[i].identifier === id) return list[i];
+      }
+      return null;
+    };
+
+    const reset = () => {
+      touchId = null;
+    };
 
     const onStart = (e) => {
+      // Второе касание во время жеста (жест «щипок» и т. п.) — отмена
+      if (touchId != null) return reset();
+      if (e.touches.length !== 1) return;
       const t = e.touches[0];
-      if (t && t.clientX <= 28 && canGoBack()) {
-        tracking = true;
+      if (t.clientX <= 28 && canGoBack()) {
+        touchId = t.identifier;
         startX = t.clientX;
         startY = t.clientY;
       }
     };
+
     const onMove = (e) => {
-      if (!tracking) return;
-      const t = e.touches[0];
-      if (!t) return;
+      if (touchId == null) return;
+      if (e.touches.length > 1 || e.defaultPrevented) return reset();
+      const t = findTouch(e.touches, touchId);
+      if (!t) return reset();
       const dx = t.clientX - startX;
       const dy = Math.abs(t.clientY - startY);
-      if (dx > 70 && dy < dx * 0.6) {
-        tracking = false;
-        window.history.back();
-      } else if (dy > 40 && dy > dx) {
-        tracking = false; // это вертикальный скролл
-      }
+      if (dy > 40 && dy > dx) reset(); // вертикальный скролл
     };
-    const onEnd = () => {
-      tracking = false;
+
+    const onEnd = (e) => {
+      if (touchId == null) return;
+      const t = findTouch(e.changedTouches, touchId);
+      if (!t) return; // отпустили не тот палец
+      const dx = t.clientX - startX;
+      const dy = Math.abs(t.clientY - startY);
+      reset();
+      // Полная протяжка: половина экрана (не меньше 150px), почти горизонтально
+      const threshold = Math.min(Math.max(150, window.innerWidth * 0.5), 320);
+      if (dx >= threshold && dy < dx * 0.5 && canGoBack()) window.history.back();
     };
 
     window.addEventListener('touchstart', onStart, { passive: true });
     window.addEventListener('touchmove', onMove, { passive: true });
     window.addEventListener('touchend', onEnd, { passive: true });
+    window.addEventListener('touchcancel', reset, { passive: true });
     return () => {
       window.removeEventListener('touchstart', onStart);
       window.removeEventListener('touchmove', onMove);
       window.removeEventListener('touchend', onEnd);
+      window.removeEventListener('touchcancel', reset);
     };
   }, []);
 }
