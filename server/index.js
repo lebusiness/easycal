@@ -23,7 +23,9 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
+        // 'wasm-unsafe-eval' — без него браузер запрещает компилировать WebAssembly,
+        // а на нём работает сканер штрихкодов (zxing-wasm)
+        scriptSrc: ["'self'", "'wasm-unsafe-eval'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", 'data:', 'blob:'],
         connectSrc: ["'self'"],
