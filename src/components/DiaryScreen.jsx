@@ -76,6 +76,9 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
     }
   }
 
+  const anyMealGoals = (meals ?? []).some((m) => m.goals);
+  const mealBarsLabel = showMealBars ? 'Скрыть прогресс приёмов' : 'Показать прогресс приёмов';
+
   function toggleCollapsed(id) {
     setCollapsed((prev) => {
       const next = new Set(prev);
@@ -153,8 +156,15 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
           (() => {
             const goalKcal = kcalFromMacros(goals.protein, goals.fat, goals.carbs);
             const kcalLeft = goalKcal - totals.kcal;
+            // Тап по дневному прогрессу прячет/возвращает прогресс-полоски приёмов
             return (
-              <div className="mt-1.5 space-y-2">
+              <button
+                type="button"
+                onClick={toggleMealBars}
+                disabled={!anyMealGoals}
+                aria-label={mealBarsLabel}
+                className="mt-1.5 block w-full space-y-2 text-left active:opacity-70"
+              >
                 <div>
                   <div className="flex items-baseline justify-between text-[0.9375rem] leading-tight">
                     {totalsMode === 'eaten' ? (
@@ -179,18 +189,24 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
                   <MiniProgress label="Ж" value={totals.fat} goal={goals.fat} color="bg-amber-500" mode={totalsMode} />
                   <MiniProgress label="У" value={totals.carbs} goal={goals.carbs} color="bg-rose-500" mode={totalsMode} />
                 </div>
-              </div>
+              </button>
             );
           })()
         ) : (
-          <div className="mt-0.5 flex flex-wrap items-baseline justify-between gap-x-3">
+          <button
+            type="button"
+            onClick={toggleMealBars}
+            disabled={!anyMealGoals}
+            aria-label={mealBarsLabel}
+            className="mt-0.5 flex w-full flex-wrap items-baseline justify-between gap-x-3 text-left active:opacity-70"
+          >
             <span className="text-xl font-bold tracking-tight">
               {fmt1(totals.kcal)} <span className="text-xs font-normal text-stone-500">ккал</span>
             </span>
             <span className="text-xs text-stone-600">
               Б <b>{fmt1(totals.protein)}</b> · Ж <b>{fmt1(totals.fat)}</b> · У <b>{fmt1(totals.carbs)}</b>
             </span>
-          </div>
+          </button>
         )}
       </section>
 
@@ -223,22 +239,16 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
                     className={`h-4 w-4 shrink-0 text-stone-400 transition-transform ${isCollapsed ? '-rotate-90' : ''}`}
                   />
                   <span className="truncate text-[0.9375rem] font-semibold">{meal.name}</span>
-                  {!meal.goals && mealEntries.length > 0 && (
+                  {meal.goals && !showMealBars ? (
+                    <span className="ml-auto shrink-0 whitespace-nowrap pl-2 pr-1 text-xs text-stone-500">
+                      {fmt0(mealTotals.kcal)}/{fmt0(goalKcal)} ккал
+                    </span>
+                  ) : !meal.goals && mealEntries.length > 0 ? (
                     <span className="ml-auto shrink-0 pl-2 pr-1 text-xs text-stone-500">
                       {fmt1(mealTotals.kcal)} ккал
                     </span>
-                  )}
+                  ) : null}
                 </button>
-                {meal.goals && !showMealBars && (
-                  <button
-                    type="button"
-                    onClick={toggleMealBars}
-                    aria-label="Показать прогресс приёмов"
-                    className="shrink-0 whitespace-nowrap px-1 py-1.5 text-xs text-stone-500 active:text-stone-700"
-                  >
-                    {fmt0(mealTotals.kcal)}/{fmt0(goalKcal)} ккал
-                  </button>
-                )}
                 <div className="-my-0.5 flex shrink-0 gap-1">
                   <button
                     type="button"
@@ -259,9 +269,7 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
                 </div>
               </div>
 
-              {meal.goals && showMealBars && (
-                <MealGoalStrip totals={mealTotals} goals={meal.goals} onHide={toggleMealBars} />
-              )}
+              {meal.goals && showMealBars && <MealGoalStrip totals={mealTotals} goals={meal.goals} />}
 
               {!isCollapsed && mealEntries.length > 0 && (
                 <ul className="divide-y divide-stone-100 border-t border-stone-100">
@@ -322,7 +330,7 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
             onClick={() => onAdd(null)}
             className="min-w-0 flex-1 py-3.5 text-base font-semibold text-white active:bg-emerald-700"
           >
-            + Добавить еду
+            + Добавить
           </button>
           <button
             type="button"
@@ -375,21 +383,16 @@ function Bar({ value, goal, color, overColor = 'bg-red-500', h = 'h-1' }) {
 
 // Компактная строка прогресса приёма: ккал + Б/Ж/У одной линией микро-баров.
 // В цель приёма ровно не попасть, поэтому перебор не красим в красный — при
-// переполнении бар лишь чуть темнеет. Тап по строке прячет прогресс у всех приёмов.
-function MealGoalStrip({ totals, goals, onHide }) {
+// переполнении бар лишь чуть темнеет. Прячется тапом по дневному прогрессу.
+function MealGoalStrip({ totals, goals }) {
   const goalKcal = kcalFromMacros(goals.protein, goals.fat, goals.carbs);
   return (
-    <button
-      type="button"
-      onClick={onHide}
-      aria-label="Скрыть прогресс приёмов"
-      className="grid w-full grid-cols-4 gap-2 border-t border-stone-100 px-3 pb-2 pt-1.5 text-left active:opacity-70"
-    >
+    <div className="grid grid-cols-4 gap-2 border-t border-stone-100 px-3 pb-2 pt-1.5">
       <Micro label="ккал" value={totals.kcal} goal={goalKcal} color="bg-emerald-500" overColor="bg-emerald-600" fmt={fmt0} />
       <Micro label="Б" value={totals.protein} goal={goals.protein} color="bg-sky-500" overColor="bg-sky-600" />
       <Micro label="Ж" value={totals.fat} goal={goals.fat} color="bg-amber-500" overColor="bg-amber-600" />
       <Micro label="У" value={totals.carbs} goal={goals.carbs} color="bg-rose-500" overColor="bg-rose-600" />
-    </button>
+    </div>
   );
 }
 

@@ -295,7 +295,7 @@ if ((bodyText().match(/Творог 5%/g) || []).length !== entryCountBefore) {
 console.log('✓ Приём сворачивается и разворачивается');
 
 // --- Частые: продукт появился с пометкой приёма
-findButton('Добавить еду').click();
+findButton('+ Добавить').click();
 await sleep(400);
 const freqText = bodyText();
 if (!freqText.includes('Творог 5%')) throw new Error('Продукт не появился во вкладке «Частые»');
@@ -412,7 +412,7 @@ if (!bodyText().includes('240/290')) throw new Error('Цели приёма не
 console.log('✓ Аккаунты: выход и вход, данные и цели приёмов сохранились под аккаунтом');
 
 // --- Составной продукт пережил сервер: состав и пресеты пришли из снимка Postgres
-findButton('Добавить еду').click();
+findButton('+ Добавить').click();
 await sleep(400);
 findButton('Свои').click();
 await sleep(300);
