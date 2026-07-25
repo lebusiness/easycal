@@ -17,7 +17,7 @@ import PortionPicker from './PortionPicker.jsx';
 import GramsWheel from './GramsWheel.jsx';
 import PhotoViewer from './PhotoViewer.jsx';
 import { IconStar, IconCamera, IconTrash } from './Icons.jsx';
-import { useBackClose } from '../navigation.js';
+import { useBackClose, useScrollToAction } from '../navigation.js';
 
 const MACROS = [
   { key: 'protein100', label: 'Белки' },
@@ -29,6 +29,8 @@ const MACROS = [
 // пресеты, БЖУ), но кнопка сохраняет изменения в записи, а не создаёт новую
 export default function ProductDetail({ product, entry, date, meal, meals, onMealChange, onEdit, onBack, onAdded, onDeleted }) {
   useBackClose(onBack);
+  // При открытии карточки докручиваем до кнопки «Добавить»/«Сохранить»
+  const actionRef = useScrollToAction();
   // Значения из OFF бывают вида 7.699999809 — приводим к одному знаку
   const [vals, setVals] = useState(() =>
     Object.fromEntries(
@@ -95,11 +97,10 @@ export default function ProductDetail({ product, entry, date, meal, meals, onMea
 
   const isMine = product.source === 'mine' && product.id != null;
 
-  // Управление пресетами прямо в карточке — только для избранных продуктов из базы
-  // (у них нет формы редактирования) и только при редактировании записи дневника:
-  // при обычном добавлении строка дублировала бы чипы выбора порции. Свои продукты
-  // настраиваются через «Редактировать».
-  const canEditPresets = entry != null && favSaved && !isMine;
+  // Управление пресетами прямо в карточке — только для избранных продуктов из базы:
+  // у них нет формы редактирования. Свои продукты настраиваются через «Редактировать»,
+  // а здесь пресеты просто выбираются в списке порций.
+  const canEditPresets = favSaved && !isMine;
 
   function currentProduct() {
     return {
@@ -410,7 +411,7 @@ export default function ProductDetail({ product, entry, date, meal, meals, onMea
           </div>
         </section>
 
-        <section className="mt-2 rounded-2xl bg-white p-3.5 shadow-sm">
+        <section ref={actionRef} className="mt-2 rounded-2xl bg-white p-3.5 shadow-sm">
           {meals.length > 0 && (
             <div className="no-scrollbar mb-2.5 flex gap-1.5 overflow-x-auto pb-0.5">
               {meals.map((m) => (

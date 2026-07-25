@@ -4,10 +4,12 @@ import { db, addMeal, renameMeal, moveMeal, deleteMeal } from '../db.js';
 import { notifyError } from '../utils.js';
 import Header from './Header.jsx';
 import { IconArrowUp, IconArrowDown, IconTrash } from './Icons.jsx';
-import { useBackClose } from '../navigation.js';
+import { useBackClose, useScrollToAction } from '../navigation.js';
 
 export default function MealsEditor({ onClose }) {
   useBackClose(onClose);
+  // При длинном списке приёмов докручиваем до кнопки «Готово»
+  const actionRef = useScrollToAction();
   const meals = useLiveQuery(() => db.meals.orderBy('order').toArray(), []);
   const [newName, setNewName] = useState('');
 
@@ -73,6 +75,7 @@ export default function MealsEditor({ onClose }) {
 
           <button
             type="button"
+            ref={actionRef}
             onClick={onClose}
             className="mt-4 w-full rounded-full bg-emerald-600 py-3 text-[0.9375rem] font-semibold text-white active:bg-emerald-700"
           >

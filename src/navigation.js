@@ -69,6 +69,44 @@ export function useBackClose(onClose) {
   }, []);
 }
 
+// Экран с главной кнопкой действия внизу при открытии докручивается так, чтобы
+// кнопка была у нижнего края экрана, а не пряталась за ним. ref вешается на
+// нижний блок с кнопками; если контент помещается целиком — прокрутки не будет.
+// Не использовать на экранах с автофокусом поля: скролл будет драться с клавиатурой.
+export function useScrollToAction() {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const raf = requestAnimationFrame(() => {
+      // Ближайший скроллящийся предок: оверлеи (fixed + overflow-y-auto) крутятся
+      // сами, обычные экраны — окном
+      let scroller = null;
+      for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+        const { overflowY } = getComputedStyle(p);
+        if (overflowY === 'auto' || overflowY === 'scroll') {
+          scroller = p;
+          break;
+        }
+      }
+      const pad = 12; // небольшой отступ под кнопкой
+      const bottom = el.getBoundingClientRect().bottom + pad;
+      if (scroller) {
+        scroller.scrollTop = Math.max(
+          0,
+          scroller.scrollTop + bottom - scroller.getBoundingClientRect().bottom
+        );
+      } else {
+        // Абсолютная позиция ещё и сбрасывает «хвост» прокрутки предыдущего вида
+        // (например, длинного списка поиска, из которого открыли карточку)
+        window.scrollTo(0, Math.max(0, window.scrollY + bottom - window.innerHeight));
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return ref;
+}
+
 // Свайп от левого края → «назад» (важно для iOS-PWA, где нет системного жеста)
 export function useEdgeSwipeBack() {
   useEffect(() => {

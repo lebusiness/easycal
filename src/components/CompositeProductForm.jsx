@@ -5,7 +5,7 @@ import Header from './Header.jsx';
 import AddFoodScreen from './AddFoodScreen.jsx';
 import { ToggleRow } from './ManualProductForm.jsx';
 import { IconStar, IconClose } from './Icons.jsx';
-import { useBackClose } from '../navigation.js';
+import { useBackClose, useScrollToAction } from '../navigation.js';
 
 // Составной продукт: блюдо из нескольких продуктов (например, молоко + банан).
 // Ингредиенты — снапшоты КБЖУ на 100 г + вес; итоговые КБЖУ на 100 г считаются
@@ -15,6 +15,9 @@ import { useBackClose } from '../navigation.js';
 export default function CompositeProductForm({ product, initialIngredients, onBack, onSaved, onDeleted }) {
   useBackClose(onBack);
   const editing = product != null;
+  // При редактировании докручиваем до кнопки «Сохранить изменения»; при создании
+  // (в т. ч. из записей дневника) вверху пустое имя с автофокусом — скролл не нужен
+  const actionRef = useScrollToAction();
   const [name, setName] = useState(product?.name ?? '');
   // Вес храним строкой — это живое поле ввода
   const [ingredients, setIngredients] = useState(() =>
@@ -128,7 +131,7 @@ export default function CompositeProductForm({ product, initialIngredients, onBa
     <div className="mx-auto w-full max-w-md pb-8">
       <Header title={editing ? 'Редактировать блюдо' : 'Составной продукт'} onBack={onBack} />
 
-      <form onSubmit={handleSubmit} className="px-3">
+      <form onSubmit={handleSubmit} ref={editing ? actionRef : undefined} className="px-3">
         <div className="rounded-2xl bg-white p-4 shadow-sm">
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-stone-500">Название *</span>

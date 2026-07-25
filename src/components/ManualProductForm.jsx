@@ -6,7 +6,7 @@ import Header from './Header.jsx';
 import GramsWheel from './GramsWheel.jsx';
 import PhotoViewer from './PhotoViewer.jsx';
 import { IconStar, IconCamera, IconClose } from './Icons.jsx';
-import { useBackClose } from '../navigation.js';
+import { useBackClose, useScrollToAction } from '../navigation.js';
 
 const MACROS = [
   { key: 'protein', label: 'Белки' },
@@ -18,6 +18,9 @@ const MACROS = [
 export default function ManualProductForm({ prefill, product, onBack, onSaved, onDeleted }) {
   useBackClose(onBack);
   const editing = product != null;
+  // При редактировании поля заполнены — докручиваем до кнопки «Сохранить».
+  // При создании, наоборот, сверху пустое имя с автофокусом — скролл не нужен.
+  const actionRef = useScrollToAction();
   const [form, setForm] = useState({
     name: product?.name ?? prefill?.name ?? '',
     description: product?.description ?? '',
@@ -157,7 +160,7 @@ export default function ManualProductForm({ prefill, product, onBack, onSaved, o
     <div className="mx-auto w-full max-w-md pb-8">
       <Header title={editing ? 'Редактировать продукт' : 'Новый продукт'} onBack={onBack} />
 
-      <form onSubmit={handleSubmit} className="px-3">
+      <form onSubmit={handleSubmit} ref={editing ? actionRef : undefined} className="px-3">
         {prefill?.notice && (
           <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
             {prefill.notice}
