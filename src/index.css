@@ -36,14 +36,3 @@ body {
 .toast-in {
   animation: toast-in 0.18s ease-out;
 }
-
-/* Видео сканера растягиваем на всю область */
-#barcode-scanner-region {
-  height: 100%;
-}
-
-#barcode-scanner-region video {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: cover;
-}

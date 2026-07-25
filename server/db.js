@@ -19,8 +19,10 @@ const SCHEMA = `
     id SERIAL PRIMARY KEY,
     user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
-    "order" INT NOT NULL DEFAULT 0
+    "order" INT NOT NULL DEFAULT 0,
+    goals JSONB
   );
+  ALTER TABLE meals ADD COLUMN IF NOT EXISTS goals JSONB;
 
   CREATE TABLE IF NOT EXISTS diary (
     id SERIAL PRIMARY KEY,
@@ -48,8 +50,10 @@ const SCHEMA = `
     barcode TEXT,
     favorite INT NOT NULL DEFAULT 0,
     presets JSONB,
+    ingredients JSONB,
     kcal100 REAL, protein100 REAL, fat100 REAL, carbs100 REAL
   );
+  ALTER TABLE my_products ADD COLUMN IF NOT EXISTS ingredients JSONB;
 
   CREATE TABLE IF NOT EXISTS favorites (
     id SERIAL PRIMARY KEY,

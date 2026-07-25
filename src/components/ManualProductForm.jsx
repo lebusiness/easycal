@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { addMyProduct, updateMyProduct, deleteMyProduct } from '../db.js';
-import { parseNum, kcalFromMacros, fmt0, notifyError, presetToObj } from '../utils.js';
+import { parseNum, round1, kcalFromMacros, fmt1, notifyError, presetToObj } from '../utils.js';
 import { fileToThumb } from '../image.js';
 import Header from './Header.jsx';
 import GramsWheel from './GramsWheel.jsx';
@@ -31,6 +31,23 @@ export default function ManualProductForm({ prefill, product, onBack, onSaved, o
   // Описание и штрихкод скрыты, пока не нужны, — форма короче на экран
   const [showDescription, setShowDescription] = useState(!!product?.description);
   const [showBarcode, setShowBarcode] = useState(!!(product?.barcode ?? prefill?.barcode));
+  // БЖУ: барабан (целые) или клавиатура (с десятыми, например 7,7); режим общий с карточкой продукта
+  const [macroKeyboard, setMacroKeyboard] = useState(() => {
+    try {
+      return localStorage.getItem('macroMode') === 'input';
+    } catch {
+      return false;
+    }
+  });
+  function toggleMacroMode() {
+    const next = !macroKeyboard;
+    setMacroKeyboard(next);
+    try {
+      localStorage.setItem('macroMode', next ? 'input' : 'wheel');
+    } catch {
+      /* приватный режим */
+    }
+  }
   // Сохранять ли продукт в «Свои» (иначе — разовый, только запись в дневник)
   // и закреплять ли его сразу в избранном
   const [saveToMine, setSaveToMine] = useState(true);
@@ -86,7 +103,7 @@ export default function ManualProductForm({ prefill, product, onBack, onSaved, o
         setError('У порции укажите вес в граммах (число больше 0)');
         return;
       }
-      const v = Math.round(gv);
+      const v = round1(gv);
       if (presets.some((p) => p.g === v)) continue;
       const p = { g: v };
       if (row.label.trim()) p.label = row.label.trim();
@@ -100,9 +117,9 @@ export default function ManualProductForm({ prefill, product, onBack, onSaved, o
       description: form.description.trim() || null,
       barcode: barcode || null,
       kcal100: kcal,
-      protein100: macros.protein,
-      fat100: macros.fat,
-      carbs100: macros.carbs,
+      protein100: round1(macros.protein),
+      fat100: round1(macros.fat),
+      carbs100: round1(macros.carbs),
       presets: presets.length ? presets : null,
     };
 
@@ -198,24 +215,44 @@ export default function ManualProductForm({ prefill, product, onBack, onSaved, o
             <div className="text-center">
               <span className="mb-1 block whitespace-nowrap text-[0.6875rem] font-medium text-emerald-800">Ккал</span>
               <div className="flex h-[120px] items-center justify-center rounded-xl bg-emerald-50 text-xl font-bold text-emerald-900">
-                {fmt0(kcal)}
+                {fmt1(kcal)}
               </div>
             </div>
             {MACROS.map((m) => (
               <div key={m.key} className="text-center">
                 <span className="mb-1 block whitespace-nowrap text-[0.6875rem] font-medium text-stone-500">{m.label}</span>
-                <GramsWheel
-                  value={form[m.key]}
-                  onChange={(v) => setForm((f2) => ({ ...f2, [m.key]: v }))}
-                  min={0}
-                  max={100}
-                  unit=""
-                  ariaLabel={`${m.label} на 100 г`}
-                />
+                {macroKeyboard ? (
+                  <input
+                    value={form[m.key]}
+                    onChange={(e) => setForm((f2) => ({ ...f2, [m.key]: e.target.value }))}
+                    inputMode="decimal"
+                    onFocus={(e) => e.target.select()}
+                    aria-label={`${m.label} на 100 г`}
+                    className="h-[120px] w-full rounded-xl border border-stone-200 bg-stone-50 text-center text-xl font-bold outline-none focus:border-emerald-500"
+                  />
+                ) : (
+                  <GramsWheel
+                    value={form[m.key]}
+                    onChange={(v) => setForm((f2) => ({ ...f2, [m.key]: v }))}
+                    min={0}
+                    max={100}
+                    unit=""
+                    ariaLabel={`${m.label} на 100 г`}
+                  />
+                )}
               </div>
             ))}
           </div>
-          <p className="mt-1 text-[0.6875rem] text-stone-400">На 100 г продукта</p>
+          <div className="mt-1 flex items-center justify-between">
+            <p className="text-[0.6875rem] text-stone-400">На 100 г продукта</p>
+            <button
+              type="button"
+              onClick={toggleMacroMode}
+              className="px-1 text-xs font-semibold text-emerald-700 active:text-emerald-800"
+            >
+              {macroKeyboard ? 'БЖУ барабаном' : 'БЖУ с клавиатуры'}
+            </button>
+          </div>
 
           {showBarcode && (
             <Field label="Штрихкод" className="mt-2.5">
@@ -362,7 +399,7 @@ export default function ManualProductForm({ prefill, product, onBack, onSaved, o
   );
 }
 
-function ToggleRow({ checked, onChange, label, hint }) {
+export function ToggleRow({ checked, onChange, label, hint }) {
   return (
     <button
       type="button"

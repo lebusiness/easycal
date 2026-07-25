@@ -283,7 +283,7 @@ export function productKeyOf(p) {
   return 'nm:' + (p.name ?? '').trim().toLowerCase();
 }
 
-function myProductToResult(p) {
+export function myProductToResult(p) {
   return {
     source: 'mine',
     id: p.id,
@@ -293,6 +293,7 @@ function myProductToResult(p) {
     barcode: p.barcode ?? null,
     favorite: !!p.favorite,
     presets: p.presets ?? null,
+    ingredients: p.ingredients ?? null,
     kcal100: p.kcal100 ?? null,
     protein100: p.protein100 ?? null,
     fat100: p.fat100 ?? null,
@@ -352,7 +353,7 @@ export async function findMyProductByBarcode(barcode) {
   return snap ? favSnapshotToResult(snap) : null;
 }
 
-export async function addMyProduct({ name, description, barcode, kcal100, protein100, fat100, carbs100, favorite = false, presets = null }) {
+export async function addMyProduct({ name, description, barcode, kcal100, protein100, fat100, carbs100, favorite = false, presets = null, ingredients = null }) {
   const body = {
     name,
     description: description || null,
@@ -363,6 +364,7 @@ export async function addMyProduct({ name, description, barcode, kcal100, protei
     carbs100,
     favorite: favorite ? 1 : 0,
     presets,
+    ingredients,
   };
   const local = { ...body, id: newTempId() };
   await db.myProducts.put(local);
@@ -611,6 +613,11 @@ export async function deleteMeal(id) {
         }
       })
   );
+}
+
+// Цели приёма: { protein, fat, carbs } или null — снять цель
+export async function setMealGoals(id, goals) {
+  await backgroundUpdate('сохранить цели приёма', db.meals, '/meals', id, { goals });
 }
 
 // Приём по умолчанию: по времени суток, если имена совпадают с дефолтными

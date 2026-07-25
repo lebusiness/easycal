@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import GramsWheel from './GramsWheel.jsx';
 import PhotoViewer from './PhotoViewer.jsx';
-import { parseNum, fmt0, presetToObj } from '../utils.js';
+import { parseNum, fmt1, presetToObj } from '../utils.js';
 
 const GRAM_PRESETS = [50, 100, 150, 200];
 
@@ -33,7 +33,7 @@ export default function PortionPicker({ grams, onChange, presets }) {
     <div>
       <div className="flex items-center justify-between">
         <label htmlFor={mode === 'input' ? 'grams' : undefined} className="text-xs font-medium text-stone-500">
-          Порция: <b className="text-sm text-stone-900">{g != null ? `${fmt0(g)} г` : '—'}</b>
+          Порция: <b className="text-sm text-stone-900">{g != null ? `${fmt1(g)} г` : '—'}</b>
         </label>
         <button
           type="button"

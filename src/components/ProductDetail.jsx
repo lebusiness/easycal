@@ -8,7 +8,7 @@ import {
   updateFavoritePresets,
   updateMyProduct,
 } from '../db.js';
-import { parseNum, round1, fmt0, kcalFromMacros, notifyError, presetToObj } from '../utils.js';
+import { parseNum, round1, fmt1, kcalFromMacros, notifyError, presetToObj } from '../utils.js';
 import { fileToThumb } from '../image.js';
 import Header from './Header.jsx';
 import PortionPicker from './PortionPicker.jsx';
@@ -31,7 +31,11 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
       MACROS.map((m) => [m.key, product[m.key] != null ? String(round1(product[m.key])) : ''])
     )
   );
-  const [grams, setGrams] = useState('100');
+  // У составного продукта порция по умолчанию — всё блюдо целиком
+  const [grams, setGrams] = useState(() => {
+    const total = product.ingredients?.reduce((s, ing) => s + (ing.g > 0 ? ing.g : 0), 0);
+    return total > 0 ? String(round1(total)) : '100';
+  });
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [favSaved, setFavSaved] = useState(!!product.favorite);
@@ -43,6 +47,23 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
   const [editingPresetG, setEditingPresetG] = useState(null); // граммы редактируемого пресета
   const [patchSaved, setPatchSaved] = useState(false);
   const [productSaved, setProductSaved] = useState(false); // БЖУ записаны в свой продукт
+  // БЖУ: барабан (целые) или клавиатура (с десятыми, например 7,7); режим общий с формой продукта
+  const [macroKeyboard, setMacroKeyboard] = useState(() => {
+    try {
+      return localStorage.getItem('macroMode') === 'input';
+    } catch {
+      return false;
+    }
+  });
+  function toggleMacroMode() {
+    const next = !macroKeyboard;
+    setMacroKeyboard(next);
+    try {
+      localStorage.setItem('macroMode', next ? 'input' : 'wheel');
+    } catch {
+      /* приватный режим */
+    }
+  }
 
   const per100 = {
     protein: parseNum(vals.protein100),
@@ -76,10 +97,10 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
   function currentProduct() {
     return {
       ...product,
-      kcal100,
-      protein100: per100.protein ?? 0,
-      fat100: per100.fat ?? 0,
-      carbs100: per100.carbs ?? 0,
+      kcal100: round1(kcal100),
+      protein100: round1(per100.protein ?? 0),
+      fat100: round1(per100.fat ?? 0),
+      carbs100: round1(per100.carbs ?? 0),
     };
   }
 
@@ -119,10 +140,10 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
         fat100: p.fat100,
         carbs100: p.carbs100,
         grams: round1(g),
-        kcal: Math.round((p.kcal100 * g) / 100),
-        protein: Math.round((p.protein100 * g) / 100),
-        fat: Math.round((p.fat100 * g) / 100),
-        carbs: Math.round((p.carbs100 * g) / 100),
+        kcal: round1((p.kcal100 * g) / 100),
+        protein: round1((p.protein100 * g) / 100),
+        fat: round1((p.fat100 * g) / 100),
+        carbs: round1((p.carbs100 * g) / 100),
         addedAt: new Date().toISOString(),
       });
       onAdded();
@@ -154,7 +175,7 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
 
   function addCurrentPreset() {
     if (g == null || g <= 0) return;
-    const v = Math.round(g);
+    const v = round1(g);
     if ((presets ?? []).some((p) => p.g === v)) return;
     const next = [...(presets ?? []), { g: v }].sort((a, b) => a.g - b.g);
     savePresets(next);
@@ -254,25 +275,40 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
             <div className="text-center">
               <span className="mb-1 block whitespace-nowrap text-[0.6875rem] text-emerald-800">Ккал</span>
               <div className="flex h-[120px] items-center justify-center rounded-xl bg-emerald-50 text-xl font-bold text-emerald-900">
-                {fmt0(kcal100)}
+                {fmt1(kcal100)}
               </div>
             </div>
             {MACROS.map((m) => (
               <div key={m.key} className="text-center">
                 <span className="mb-1 block whitespace-nowrap text-[0.6875rem] text-stone-500">{m.label}</span>
                 <div className={product[m.key] == null && !vals[m.key] ? 'rounded-xl ring-1 ring-amber-300' : ''}>
-                  <GramsWheel
-                    value={vals[m.key]}
-                    onChange={(v) => {
-                      setVals((prev) => ({ ...prev, [m.key]: v }));
-                      setPatchSaved(false);
-                      setProductSaved(false);
-                    }}
-                    min={0}
-                    max={100}
-                    unit=""
-                    ariaLabel={`${m.label} на 100 г`}
-                  />
+                  {macroKeyboard ? (
+                    <input
+                      value={vals[m.key]}
+                      onChange={(e) => {
+                        setVals((prev) => ({ ...prev, [m.key]: e.target.value }));
+                        setPatchSaved(false);
+                        setProductSaved(false);
+                      }}
+                      inputMode="decimal"
+                      onFocus={(e) => e.target.select()}
+                      aria-label={`${m.label} на 100 г`}
+                      className="h-[120px] w-full rounded-xl border border-stone-200 bg-stone-50 text-center text-xl font-bold outline-none focus:border-emerald-500"
+                    />
+                  ) : (
+                    <GramsWheel
+                      value={vals[m.key]}
+                      onChange={(v) => {
+                        setVals((prev) => ({ ...prev, [m.key]: v }));
+                        setPatchSaved(false);
+                        setProductSaved(false);
+                      }}
+                      min={0}
+                      max={100}
+                      unit=""
+                      ariaLabel={`${m.label} на 100 г`}
+                    />
+                  )}
                 </div>
               </div>
             ))}
@@ -285,6 +321,13 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
                   ? 'БЖУ изменены — только для этой записи'
                   : 'На 100 г'}
             </span>
+            <button
+              type="button"
+              onClick={toggleMacroMode}
+              className="px-1 text-xs font-semibold text-emerald-700 active:text-emerald-800"
+            >
+              {macroKeyboard ? 'БЖУ барабаном' : 'БЖУ с клавиатуры'}
+            </button>
             {dirty && product.barcode && product.source !== 'mine' && (
               <button
                 type="button"
@@ -382,22 +425,22 @@ export default function ProductDetail({ product, date, meal, meals, onMealChange
                   </button>
                 </span>
               ))}
-              {g != null && g > 0 && !(presets ?? []).some((p) => p.g === Math.round(g)) && (
+              {g != null && g > 0 && !(presets ?? []).some((p) => p.g === round1(g)) && (
                 <button
                   type="button"
                   onClick={addCurrentPreset}
                   aria-label="Добавить пресет"
                   className="shrink-0 whitespace-nowrap rounded-full border border-dashed border-stone-300 px-3 py-1 text-sm text-stone-500 active:border-emerald-500 active:text-emerald-700"
                 >
-                  + {fmt0(g)} г
+                  + {fmt1(g)} г
                 </button>
               )}
             </div>
           )}
 
-          <div className="mt-2.5 whitespace-nowrap rounded-xl bg-emerald-50 px-3.5 py-2 text-[0.9375rem] text-emerald-900">
-            <b className="text-xl">{fmt0(portion(kcal100))}</b> ккал · Б <b>{fmt0(portion(per100.protein))}</b> · Ж{' '}
-            <b>{fmt0(portion(per100.fat))}</b> · У <b>{fmt0(portion(per100.carbs))}</b>
+          <div className="mt-2.5 rounded-xl bg-emerald-50 px-3.5 py-2 text-[0.9375rem] text-emerald-900">
+            <b className="text-xl">{fmt1(portion(kcal100))}</b> ккал · Б <b>{fmt1(portion(per100.protein))}</b> · Ж{' '}
+            <b>{fmt1(portion(per100.fat))}</b> · У <b>{fmt1(portion(per100.carbs))}</b>
           </div>
 
           {error && <p className="mt-2 text-sm text-red-600">{error}</p>}

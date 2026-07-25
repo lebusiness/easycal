@@ -44,9 +44,9 @@ export function parseNum(s) {
 
 export const round1 = (n) => Math.round(n * 10) / 10;
 
-// Калории из БЖУ: 4/9/4 ккал на грамм
+// Калории из БЖУ: 4/9/4 ккал на грамм; точность — до десятых
 export function kcalFromMacros(protein, fat, carbs) {
-  return Math.round((protein ?? 0) * 4 + (fat ?? 0) * 9 + (carbs ?? 0) * 4);
+  return round1((protein ?? 0) * 4 + (fat ?? 0) * 9 + (carbs ?? 0) * 4);
 }
 
 // Для действий без своего места под сообщение об ошибке (экспорт, редкие локальные сбои)

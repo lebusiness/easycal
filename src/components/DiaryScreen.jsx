@@ -36,6 +36,25 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
     }
   }
 
+  // Прогресс приёмов можно спрятать: тап по полоске скрывает, тап по цифрам в шапке возвращает
+  const [showMealBars, setShowMealBars] = useState(() => {
+    try {
+      return localStorage.getItem('mealBars') !== 'off';
+    } catch {
+      return true;
+    }
+  });
+
+  function toggleMealBars() {
+    const next = !showMealBars;
+    setShowMealBars(next);
+    try {
+      localStorage.setItem('mealBars', next ? 'on' : 'off');
+    } catch {
+      /* приватный режим */
+    }
+  }
+
   const isToday = date === toISODate(new Date());
   const list = entries ?? [];
   const totals = list.reduce(
@@ -140,15 +159,15 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
                   <div className="flex items-baseline justify-between text-[0.9375rem] leading-tight">
                     {totalsMode === 'eaten' ? (
                       <span className="font-semibold">
-                        {fmt0(totals.kcal)}
-                        <span className="font-normal text-stone-400"> / {fmt0(goalKcal)} ккал</span>
+                        {fmt1(totals.kcal)}
+                        <span className="font-normal text-stone-400"> / {fmt1(goalKcal)} ккал</span>
                       </span>
                     ) : (
                       <span className="font-semibold">
-                        {fmt0(Math.max(0, kcalLeft))}
+                        {fmt1(Math.max(0, kcalLeft))}
                         <span className="font-normal text-stone-400"> ккал осталось</span>
                         {kcalLeft < 0 && (
-                          <span className="font-semibold text-red-600"> · перебор {fmt0(-kcalLeft)}</span>
+                          <span className="font-semibold text-red-600"> · перебор {fmt1(-kcalLeft)}</span>
                         )}
                       </span>
                     )}
@@ -166,10 +185,10 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
         ) : (
           <div className="mt-0.5 flex flex-wrap items-baseline justify-between gap-x-3">
             <span className="text-xl font-bold tracking-tight">
-              {fmt0(totals.kcal)} <span className="text-xs font-normal text-stone-500">ккал</span>
+              {fmt1(totals.kcal)} <span className="text-xs font-normal text-stone-500">ккал</span>
             </span>
             <span className="text-xs text-stone-600">
-              Б <b>{fmt0(totals.protein)}</b> · Ж <b>{fmt0(totals.fat)}</b> · У <b>{fmt0(totals.carbs)}</b>
+              Б <b>{fmt1(totals.protein)}</b> · Ж <b>{fmt1(totals.fat)}</b> · У <b>{fmt1(totals.carbs)}</b>
             </span>
           </div>
         )}
@@ -178,8 +197,19 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
       <div className="mx-3 mt-2 space-y-2">
         {(meals ?? []).map((meal) => {
           const mealEntries = byMeal.get(meal.id) ?? [];
-          const mealKcal = mealEntries.reduce((s, e) => s + (e.kcal || 0), 0);
+          const mealTotals = mealEntries.reduce(
+            (a, e) => ({
+              kcal: a.kcal + (e.kcal || 0),
+              protein: a.protein + (e.protein || 0),
+              fat: a.fat + (e.fat || 0),
+              carbs: a.carbs + (e.carbs || 0),
+            }),
+            { kcal: 0, protein: 0, fat: 0, carbs: 0 }
+          );
           const isCollapsed = collapsed.has(meal.id);
+          const goalKcal = meal.goals
+            ? kcalFromMacros(meal.goals.protein, meal.goals.fat, meal.goals.carbs)
+            : null;
           return (
             <section key={meal.id} className="rounded-2xl bg-white shadow-sm">
               <div className="flex items-center gap-1 py-1 pl-2.5 pr-1.5">
@@ -193,12 +223,22 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
                     className={`h-4 w-4 shrink-0 text-stone-400 transition-transform ${isCollapsed ? '-rotate-90' : ''}`}
                   />
                   <span className="truncate text-[0.9375rem] font-semibold">{meal.name}</span>
-                  {mealEntries.length > 0 && (
+                  {!meal.goals && mealEntries.length > 0 && (
                     <span className="ml-auto shrink-0 pl-2 pr-1 text-xs text-stone-500">
-                      {fmt0(mealKcal)} ккал
+                      {fmt1(mealTotals.kcal)} ккал
                     </span>
                   )}
                 </button>
+                {meal.goals && !showMealBars && (
+                  <button
+                    type="button"
+                    onClick={toggleMealBars}
+                    aria-label="Показать прогресс приёмов"
+                    className="shrink-0 whitespace-nowrap px-1 py-1.5 text-xs text-stone-500 active:text-stone-700"
+                  >
+                    {fmt0(mealTotals.kcal)}/{fmt0(goalKcal)} ккал
+                  </button>
+                )}
                 <div className="-my-0.5 flex shrink-0 gap-1">
                   <button
                     type="button"
@@ -219,6 +259,10 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
                 </div>
               </div>
 
+              {meal.goals && showMealBars && (
+                <MealGoalStrip totals={mealTotals} goals={meal.goals} onHide={toggleMealBars} />
+              )}
+
               {!isCollapsed && mealEntries.length > 0 && (
                 <ul className="divide-y divide-stone-100 border-t border-stone-100">
                   {mealEntries.map((e) => (
@@ -233,7 +277,7 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
                           <span className="shrink-0 text-[0.6875rem] text-stone-400">{formatTime(e.addedAt)}</span>
                         )}
                         <span className="shrink-0 text-xs text-stone-500">{fmt1(e.grams)} г</span>
-                        <span className="shrink-0 text-[0.9375rem] font-semibold">{fmt0(e.kcal)}</span>
+                        <span className="shrink-0 text-[0.9375rem] font-semibold">{fmt1(e.kcal)}</span>
                       </button>
                       <button
                         type="button"
@@ -316,15 +360,51 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
   );
 }
 
-function Bar({ value, goal, color, h = 'h-1' }) {
+function Bar({ value, goal, color, overColor = 'bg-red-500', h = 'h-1' }) {
   const pct = goal > 0 ? Math.min(100, (value / goal) * 100) : 0;
   const over = goal > 0 && value > goal;
   return (
     <div className={`mt-0.5 ${h} overflow-hidden rounded-full bg-stone-100`}>
       <div
-        className={`h-full rounded-full ${over ? 'bg-red-500' : color} transition-[width] duration-300`}
+        className={`h-full rounded-full ${over ? overColor : color} transition-[width] duration-300`}
         style={{ width: `${pct}%` }}
       />
+    </div>
+  );
+}
+
+// Компактная строка прогресса приёма: ккал + Б/Ж/У одной линией микро-баров.
+// В цель приёма ровно не попасть, поэтому перебор не красим в красный — при
+// переполнении бар лишь чуть темнеет. Тап по строке прячет прогресс у всех приёмов.
+function MealGoalStrip({ totals, goals, onHide }) {
+  const goalKcal = kcalFromMacros(goals.protein, goals.fat, goals.carbs);
+  return (
+    <button
+      type="button"
+      onClick={onHide}
+      aria-label="Скрыть прогресс приёмов"
+      className="grid w-full grid-cols-4 gap-2 border-t border-stone-100 px-3 pb-2 pt-1.5 text-left active:opacity-70"
+    >
+      <Micro label="ккал" value={totals.kcal} goal={goalKcal} color="bg-emerald-500" overColor="bg-emerald-600" fmt={fmt0} />
+      <Micro label="Б" value={totals.protein} goal={goals.protein} color="bg-sky-500" overColor="bg-sky-600" />
+      <Micro label="Ж" value={totals.fat} goal={goals.fat} color="bg-amber-500" overColor="bg-amber-600" />
+      <Micro label="У" value={totals.carbs} goal={goals.carbs} color="bg-rose-500" overColor="bg-rose-600" />
+    </button>
+  );
+}
+
+function Micro({ label, value, goal, color, overColor, fmt = fmt1 }) {
+  const over = goal > 0 && value > goal;
+  return (
+    <div>
+      <div className="flex items-baseline justify-between text-[0.625rem] leading-tight">
+        <span className="text-stone-400">{label}</span>
+        <span className={`font-medium ${over ? 'text-stone-800' : 'text-stone-600'}`}>
+          {fmt(value)}
+          <span className="font-normal text-stone-400">/{fmt(goal)}</span>
+        </span>
+      </div>
+      <Bar value={value} goal={goal} color={color} overColor={overColor} />
     </div>
   );
 }
@@ -338,12 +418,12 @@ function MiniProgress({ label, value, goal, color, mode = 'eaten' }) {
         <span className="text-stone-500">{label}</span>
         {mode === 'eaten' ? (
           <span className={over ? 'font-semibold text-red-600' : 'font-semibold'}>
-            {fmt0(value)}
-            <span className="font-normal text-stone-400">/{fmt0(goal)}</span>
+            {fmt1(value)}
+            <span className="font-normal text-stone-400">/{fmt1(goal)}</span>
           </span>
         ) : (
           <span className={over ? 'font-semibold text-red-600' : 'font-semibold'}>
-            {over ? `+${fmt0(-left)}` : fmt0(left)}
+            {over ? `+${fmt1(-left)}` : fmt1(left)}
             <span className="font-normal text-stone-400"> {over ? 'сверх' : 'ост.'}</span>
           </span>
         )}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { updateDiaryEntry, deleteDiaryEntry, getFavoriteFor } from '../db.js';
-import { parseNum, round1, fmt0, formatTime, notifyError } from '../utils.js';
+import { parseNum, round1, fmt1, formatTime, notifyError } from '../utils.js';
 import Header from './Header.jsx';
 import PortionPicker from './PortionPicker.jsx';
 import { useBackClose } from '../navigation.js';
@@ -50,7 +50,7 @@ export default function EntryEditor({ entry, meals, onClose }) {
         : { kcal: 0, protein: 0, fat: 0, carbs: 0 };
 
   const g = parseNum(grams);
-  const portion = (v) => (g == null || g <= 0 ? null : Math.round((v * g) / 100));
+  const portion = (v) => (g == null || g <= 0 ? null : round1((v * g) / 100));
 
   async function handleSave() {
     setError(null);
@@ -71,10 +71,10 @@ export default function EntryEditor({ entry, meals, onClose }) {
       mealId: meal.id,
       mealLabel: meal.name,
       addedAt,
-      kcal: Math.round((per100.kcal * g) / 100),
-      protein: Math.round((per100.protein * g) / 100),
-      fat: Math.round((per100.fat * g) / 100),
-      carbs: Math.round((per100.carbs * g) / 100),
+      kcal: round1((per100.kcal * g) / 100),
+      protein: round1((per100.protein * g) / 100),
+      fat: round1((per100.fat * g) / 100),
+      carbs: round1((per100.carbs * g) / 100),
         kcal100: round1(per100.kcal),
         protein100: round1(per100.protein),
         fat100: round1(per100.fat),
@@ -136,8 +136,8 @@ export default function EntryEditor({ entry, meals, onClose }) {
             </label>
 
             <div className="mt-3 rounded-xl bg-emerald-50 px-3.5 py-2 text-[0.9375rem] text-emerald-900">
-              <b>{fmt0(portion(per100.kcal))}</b> ккал · Б <b>{fmt0(portion(per100.protein))}</b> · Ж{' '}
-              <b>{fmt0(portion(per100.fat))}</b> · У <b>{fmt0(portion(per100.carbs))}</b>
+              <b>{fmt1(portion(per100.kcal))}</b> ккал · Б <b>{fmt1(portion(per100.protein))}</b> · Ж{' '}
+              <b>{fmt1(portion(per100.fat))}</b> · У <b>{fmt1(portion(per100.carbs))}</b>
             </div>
 
             {error && <p className="mt-2 text-sm text-red-600">{error}</p>}

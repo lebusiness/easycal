@@ -1,9 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import { prepareZXingModule, readBarcodes } from 'zxing-wasm/reader';
+import wasmUrl from 'zxing-wasm/reader/zxing_reader.wasm?url';
 import { IconClose, Spinner } from './Icons.jsx';
 import { useBackClose } from '../navigation.js';
 
-const REGION_ID = 'barcode-scanner-region';
+// WASM отдаём из своего бандла, а не с CDN — сканер работает офлайн (PWA)
+prepareZXingModule({
+  overrides: {
+    locateFile: (path, prefix) => (path.endsWith('.wasm') ? wasmUrl : prefix + path),
+  },
+});
+
+// tryRotate читает код под любым углом (в т. ч. вверх ногами), tryHarder +
+// tryDownscale вытягивают мелкие и смазанные коды ценой времени на кадр
+const ZXING_OPTS = {
+  formats: ['EAN-13', 'EAN-8', 'UPC-A', 'UPC-E'],
+  tryHarder: true,
+  tryRotate: true,
+  tryInvert: true,
+  tryDownscale: true,
+};
+
+// EAN/UPC защищены контрольной цифрой, но на шумных кадрах tryHarder изредка
+// «дочитывает» не тот код — принимаем только код, увиденный дважды
+const HITS_TO_ACCEPT = 2;
 
 function cameraErrorMessage(err) {
   if (!navigator.mediaDevices?.getUserMedia) {
@@ -22,16 +42,14 @@ function cameraErrorMessage(err) {
   return 'Не удалось запустить камеру. Попробуйте ещё раз.';
 }
 
-async function safeStop(scanner) {
+async function makeNativeDetector() {
+  if (!('BarcodeDetector' in window)) return null;
   try {
-    if (scanner.isScanning) await scanner.stop();
+    const supported = await window.BarcodeDetector.getSupportedFormats();
+    const formats = ['ean_13', 'ean_8', 'upc_a', 'upc_e'].filter((f) => supported.includes(f));
+    return formats.length ? new window.BarcodeDetector({ formats }) : null;
   } catch {
-    /* уже остановлен */
-  }
-  try {
-    scanner.clear();
-  } catch {
-    /* контейнер уже размонтирован */
+    return null;
   }
 }
 
@@ -39,8 +57,12 @@ export default function BarcodeScanner({ onScan, onClose }) {
   useBackClose(onClose);
   const [starting, setStarting] = useState(true);
   const [error, setError] = useState(null);
+  const [torchOn, setTorchOn] = useState(false);
+  const [torchSupported, setTorchSupported] = useState(false);
   const [digits, setDigits] = useState('');
   const [digitsError, setDigitsError] = useState(null);
+  const videoRef = useRef(null);
+  const trackRef = useRef(null);
   const handledRef = useRef(false);
   const onScanRef = useRef(onScan);
 
@@ -56,58 +78,149 @@ export default function BarcodeScanner({ onScan, onClose }) {
     onScanRef.current(code);
   }
 
+  async function toggleTorch() {
+    const track = trackRef.current;
+    if (!track) return;
+    try {
+      await track.applyConstraints({ advanced: [{ torch: !torchOn }] });
+      setTorchOn((v) => !v);
+    } catch {
+      /* фонарик не поддерживается этим треком */
+    }
+  }
+
   useEffect(() => {
     onScanRef.current = onScan;
   }, [onScan]);
 
   useEffect(() => {
     let disposed = false;
-    const scanner = new Html5Qrcode(REGION_ID, {
-      formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8],
-      verbose: false,
-    });
+    let stream = null;
 
-    const startPromise = scanner
-      .start(
-        { facingMode: 'environment' },
-        {
-          fps: 15,
-          // Нативный BarcodeDetector браузера намного лучше читает смазанные
-          // 1D-коды (вебкамеры ноутбуков не фокусируются вблизи)
-          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-          // HD-поток: больше пикселей на полосу штрихкода
-          videoConstraints: {
-            facingMode: 'environment',
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-          },
-          qrbox: (vw, vh) => ({
-            width: Math.max(50, Math.floor(Math.min(vw * 0.9, 500))),
-            height: Math.max(50, Math.floor(Math.min(vh * 0.4, 220))),
-          }),
-        },
-        (text) => {
-          if (handledRef.current) return;
-          handledRef.current = true;
-          onScanRef.current(text);
-        },
-        () => {
-          /* кадр без распознанного кода — норма */
+    // Греем WASM, пока пользователь даёт доступ к камере
+    prepareZXingModule({ fireImmediately: true }).catch(() => {});
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const zoomCanvas = document.createElement('canvas');
+    const zoomCtx = zoomCanvas.getContext('2d', { willReadFrequently: true });
+    const hits = new Map();
+    let nativeDetector = null;
+    let zoomPass = false;
+
+    function report(raw) {
+      const code = String(raw || '').replace(/\D/g, '');
+      if (!code) return false;
+      const n = (hits.get(code) || 0) + 1;
+      hits.set(code, n);
+      if (n < HITS_TO_ACCEPT || handledRef.current) return n >= HITS_TO_ACCEPT;
+      handledRef.current = true;
+      onScanRef.current(code);
+      return true;
+    }
+
+    async function decodeFrame(video) {
+      const w = video.videoWidth;
+      const h = video.videoHeight;
+      if (!w || !h) return;
+
+      canvas.width = w;
+      canvas.height = h;
+      ctx.drawImage(video, 0, 0, w, h);
+
+      // 1. Нативный детектор ОС (Android/Chrome): быстрый и сам крутит кадр
+      if (nativeDetector) {
+        try {
+          const found = await nativeDetector.detect(canvas);
+          if (found.length && report(found[0].rawValue)) return;
+        } catch {
+          nativeDetector = null;
         }
-      )
-      .then(() => {
-        if (!disposed) setStarting(false);
-      })
-      .catch((err) => {
-        if (!disposed) {
-          setStarting(false);
-          setError(cameraErrorMessage(err));
+      }
+
+      // 2. ZXing по полному кадру — любой поворот, наклон, инверсия
+      const full = await readBarcodes(ctx.getImageData(0, 0, w, h), ZXING_OPTS);
+      if (full.length && full[0].isValid && report(full[0].text)) return;
+
+      // 3. Через кадр: «цифровой зум» — центральная половина кадра ×2,
+      //    вытягивает коды, снятые издалека или совсем мелкие
+      zoomPass = !zoomPass;
+      if (zoomPass) {
+        const cw = Math.floor(w / 2);
+        const ch = Math.floor(h / 2);
+        zoomCanvas.width = cw * 2;
+        zoomCanvas.height = ch * 2;
+        zoomCtx.drawImage(video, (w - cw) / 2, (h - ch) / 2, cw, ch, 0, 0, cw * 2, ch * 2);
+        const zoomed = await readBarcodes(
+          zoomCtx.getImageData(0, 0, cw * 2, ch * 2),
+          ZXING_OPTS
+        );
+        if (zoomed.length && zoomed[0].isValid) report(zoomed[0].text);
+      }
+    }
+
+    async function scanLoop() {
+      const video = videoRef.current;
+      while (!disposed && !handledRef.current) {
+        if (video && video.readyState >= 2) {
+          try {
+            await decodeFrame(video);
+          } catch {
+            /* битый кадр — пропускаем */
+          }
         }
+        await new Promise((r) => setTimeout(r, 60));
+      }
+    }
+
+    async function start() {
+      nativeDetector = await makeNativeDetector();
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: 'environment' },
+          // Больше пикселей на штрих — дальше и мельче читается
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
       });
+      if (disposed) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      const track = stream.getVideoTracks()[0];
+      trackRef.current = track;
+      try {
+        await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+      } catch {
+        /* автофокус недоступен — не критично */
+      }
+      try {
+        setTorchSupported(Boolean(track.getCapabilities?.().torch));
+      } catch {
+        /* getCapabilities не везде есть */
+      }
+      const video = videoRef.current;
+      video.srcObject = stream;
+      await video.play().catch(() => {});
+      if (disposed) return;
+      setStarting(false);
+      scanLoop();
+    }
+
+    start().catch((err) => {
+      if (!disposed) {
+        setStarting(false);
+        setError(cameraErrorMessage(err));
+      }
+    });
 
     return () => {
       disposed = true;
-      startPromise.finally(() => safeStop(scanner));
+      trackRef.current = null;
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+      const video = videoRef.current;
+      if (video) video.srcObject = null;
     };
   }, []);
 
@@ -126,7 +239,25 @@ export default function BarcodeScanner({ onScan, onClose }) {
       </div>
 
       <div className="relative flex-1 overflow-hidden">
-        <div id={REGION_ID} />
+        <video ref={videoRef} playsInline muted autoPlay className="h-full w-full object-cover" />
+        {!starting && !error && (
+          <>
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <div className="h-[38%] w-[85%] rounded-2xl border-2 border-white/50" />
+            </div>
+            {torchSupported && (
+              <button
+                type="button"
+                onClick={toggleTorch}
+                className={`absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full px-5 py-2.5 font-semibold ${
+                  torchOn ? 'bg-amber-400 text-stone-900' : 'bg-white/15 text-white'
+                }`}
+              >
+                {torchOn ? 'Выключить фонарик' : 'Фонарик'}
+              </button>
+            )}
+          </>
+        )}
         {starting && !error && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white/80">
             <Spinner className="h-8 w-8" />
@@ -153,8 +284,8 @@ export default function BarcodeScanner({ onScan, onClose }) {
       <div className="space-y-3 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4">
         {!error && (
           <p className="text-center text-sm text-white/70">
-            Наведите камеру на штрихкод (EAN-13 или EAN-8). С вебкамеры ноутбука держите код в
-            15–25 см от объектива — вблизи она не фокусируется.
+            Просто покажите штрихкод камере — под любым углом, хоть вверх ногами. Если код мелкий,
+            поднесите чуть ближе или включите фонарик.
           </p>
         )}
         <form onSubmit={submitDigits} className="flex gap-2">

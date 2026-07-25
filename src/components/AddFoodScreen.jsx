@@ -14,14 +14,17 @@ import {
   removeFavorite,
   getFavoriteFor,
   guessMeal,
+  myProductToResult,
 } from '../db.js';
 import { searchOpenFoodFacts, fetchProductByBarcode } from '../api.js';
 import { searchBasicFoods, correctSearchQuery } from '../basicFoods.js';
 import { useBackClose } from '../navigation.js';
-import { fmt0 } from '../utils.js';
+import { fmt1, parseNum, kcalFromMacros } from '../utils.js';
 import Header from './Header.jsx';
 import ProductDetail from './ProductDetail.jsx';
 import ManualProductForm from './ManualProductForm.jsx';
+import CompositeProductForm from './CompositeProductForm.jsx';
+import PortionPicker from './PortionPicker.jsx';
 import { IconBarcode, IconPencil, IconSearch, IconStar, IconTrash, Spinner } from './Icons.jsx';
 
 // html5-qrcode тяжёлый — загружаем чанк только при открытии сканера
@@ -33,11 +36,14 @@ const TABS = [
   { key: 'mine', label: 'Свои' },
 ];
 
-export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocusSearch, autoManual, onClose }) {
+// pickMode — экран работает как выбор ингредиента для составного продукта:
+// тот же поиск/вкладки/штрихкод, но вместо карточки — шторка с весом,
+// а выбранное уходит в onPick(product, grams)
+export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocusSearch, autoManual, pickMode, onPick, onClose }) {
   const meals = useLiveQuery(() => db.meals.orderBy('order').toArray(), []);
 
   // autoManual — кнопка «Свой продукт» на главном экране: сразу открываем форму
-  const [view, setView] = useState(autoManual ? 'manual' : 'search'); // search | detail | manual
+  const [view, setView] = useState(autoManual ? 'manual' : 'search'); // search | detail | manual | composite
   const [mealId, setMealId] = useState(initialMealId ?? null);
   const [tab, setTab] = useState('frequent');
   const [query, setQuery] = useState('');
@@ -128,19 +134,41 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocus
     setView('manual');
   }
 
-  function openEditor(product, from = 'detail') {
+  function openComposite() {
     setManualPrefill(null);
-    setEditing({ product, from });
+    setEditing(null);
     setBarcodeState(null);
-    setView('manual');
+    setView('composite');
+  }
+
+  // Свои продукты в списках бывают снапшотами из дневника (без состава) —
+  // перед редактированием берём свежую запись и по ней выбираем форму:
+  // составной продукт открывается в конструкторе, обычный — в ручной форме
+  async function openEditor(product, from = 'detail') {
+    let p = product;
+    if (p.source === 'mine' && p.id != null) {
+      const fresh = await db.myProducts.get(p.id).catch(() => null);
+      if (fresh) p = myProductToResult(fresh);
+    }
+    setManualPrefill(null);
+    setEditing({ product: p, from });
+    setBarcodeState(null);
+    setView(p.ingredients?.length ? 'composite' : 'manual');
   }
 
   async function openDetail(product) {
+    // Свой продукт мог измениться после снапшота (частые/дневник) — читаем свежий
+    let p = product;
+    if (p.source === 'mine' && p.id != null) {
+      const fresh = await db.myProducts.get(p.id).catch(() => null);
+      if (fresh) p = myProductToResult(fresh);
+    }
     // Подтягиваем флаг избранного и пресеты граммов (по своему id или штрихкоду)
-    const fav = await getFavoriteFor(product).catch(() => null);
-    setSelected(fav ? { ...product, ...fav } : product);
+    const fav = await getFavoriteFor(p).catch(() => null);
+    setSelected(fav ? { ...p, ...fav } : p);
     setBarcodeState(null);
-    setView('detail');
+    // В режиме выбора ингредиента карточка не нужна — поверх списка откроется шторка с весом
+    setView(pickMode ? 'search' : 'detail');
   }
 
   async function lookupBarcode(barcode) {
@@ -227,6 +255,39 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocus
     );
   }
 
+  if (view === 'composite') {
+    return (
+      <CompositeProductForm
+        product={editing?.product}
+        onBack={() => {
+          if (editing) {
+            const returnTo = editing.from === 'detail' && selected ? 'detail' : 'search';
+            setEditing(null);
+            setView(returnTo);
+          } else {
+            setView('search');
+          }
+        }}
+        onSaved={(p) => {
+          const fromList = editing?.from === 'list';
+          setEditing(null);
+          if (fromList) {
+            setTabRefresh((t) => t + 1);
+            setView('search');
+          } else {
+            openDetail(p);
+          }
+        }}
+        onDeleted={() => {
+          setEditing(null);
+          setSelected(null);
+          setTabRefresh((t) => t + 1);
+          setView('search');
+        }}
+      />
+    );
+  }
+
   // Дубликаты OFF-результатов, уже сохранённые локально (по штрихкоду), скрываем
   const localBarcodes = new Set(localResults.map((p) => p.barcode).filter(Boolean));
   const off = offResults.filter((p) => !p.barcode || !localBarcodes.has(p.barcode));
@@ -241,10 +302,10 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocus
 
   return (
     <div className="mx-auto w-full max-w-md pb-8">
-      <Header title="Добавить еду" onBack={onClose} />
+      <Header title={pickMode ? 'Добавить ингредиент' : 'Добавить еду'} onBack={onClose} />
 
       <div className="px-3">
-        {meals && meals.length > 0 && (
+        {!pickMode && meals && meals.length > 0 && (
           <div className="mb-2 flex gap-1.5 overflow-x-auto pb-0.5">
             {meals.map((m) => (
               <button
@@ -340,9 +401,11 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocus
             onTab={setTab}
             mealLabel={currentMeal?.name ?? null}
             refreshKey={tabRefresh}
+            canManage={!pickMode}
             onSelect={openDetail}
             onEdit={openEditor}
             onNewProduct={() => openManual(null)}
+            onNewComposite={pickMode ? null : openComposite}
           />
         ) : (
           <>
@@ -441,11 +504,70 @@ export default function AddFoodScreen({ date, initialMealId, autoScan, autoFocus
           <BarcodeScanner onScan={handleScan} onClose={() => setScannerOpen(false)} />
         </Suspense>
       )}
+
+      {pickMode && selected && (
+        <IngredientSheet
+          product={selected}
+          onConfirm={(grams) => onPick(selected, grams)}
+          onClose={() => setSelected(null)}
+        />
+      )}
     </div>
   );
 }
 
-function TabsView({ tab, onTab, mealLabel, refreshKey, onSelect, onEdit, onNewProduct }) {
+// Шторка в режиме выбора ингредиента: вес порции + КБЖУ, без карточки продукта
+function IngredientSheet({ product, onConfirm, onClose }) {
+  useBackClose(onClose);
+  const [grams, setGrams] = useState('100');
+  const [error, setError] = useState(null);
+  const g = parseNum(grams);
+  const kcal100 =
+    product.kcal100 ?? kcalFromMacros(product.protein100 ?? 0, product.fat100 ?? 0, product.carbs100 ?? 0);
+  const per = (v) => (g == null || g <= 0 ? null : ((v ?? 0) * g) / 100);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={onClose}>
+      <div
+        className="w-full max-w-md rounded-t-2xl bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="truncate text-base font-semibold">{product.name}</h3>
+        <p className="mt-0.5 text-xs text-stone-500">
+          На 100 г: {fmt1(kcal100)} ккал · Б {fmt1(product.protein100)} · Ж {fmt1(product.fat100)} · У{' '}
+          {fmt1(product.carbs100)}
+        </p>
+
+        <div className="mt-3">
+          <PortionPicker grams={grams} onChange={setGrams} presets={product.presets} />
+        </div>
+
+        <div className="mt-2.5 rounded-xl bg-emerald-50 px-3.5 py-2 text-[0.9375rem] text-emerald-900">
+          <b className="text-xl">{fmt1(per(kcal100))}</b> ккал · Б <b>{fmt1(per(product.protein100))}</b> · Ж{' '}
+          <b>{fmt1(per(product.fat100))}</b> · У <b>{fmt1(per(product.carbs100))}</b>
+        </div>
+
+        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+
+        <button
+          type="button"
+          onClick={() => {
+            if (g == null || g <= 0) {
+              setError('Укажите вес порции в граммах');
+              return;
+            }
+            onConfirm(g);
+          }}
+          className="mt-2.5 w-full rounded-full bg-emerald-600 py-3 text-base font-semibold text-white active:bg-emerald-700"
+        >
+          Добавить в состав
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TabsView({ tab, onTab, mealLabel, refreshKey, canManage = true, onSelect, onEdit, onNewProduct, onNewComposite }) {
   const [items, setItems] = useState(null);
   const [reload, setReload] = useState(0);
 
@@ -527,21 +649,32 @@ function TabsView({ tab, onTab, mealLabel, refreshKey, onSelect, onEdit, onNewPr
               topMeal={item.topMeal}
               showStar={tab === 'mine' || tab === 'favorites'}
               onToggleFavorite={() => handleToggleFavorite(item.product)}
-              onEdit={tab === 'mine' ? () => onEdit(item.product, 'list') : null}
-              onDelete={tab === 'mine' ? () => handleDelete(item.product) : null}
+              onEdit={tab === 'mine' && canManage ? () => onEdit(item.product, 'list') : null}
+              onDelete={tab === 'mine' && canManage ? () => handleDelete(item.product) : null}
               onSelect={onSelect}
             />
           ))
         )}
 
         {tab === 'mine' && (
-          <button
-            type="button"
-            onClick={onNewProduct}
-            className="w-full rounded-xl border-2 border-dashed border-stone-300 py-3 text-sm font-medium text-stone-500 active:border-emerald-500 active:text-emerald-700"
-          >
-            + Новый продукт
-          </button>
+          <div className={onNewComposite ? 'grid grid-cols-2 gap-1.5' : ''}>
+            <button
+              type="button"
+              onClick={onNewProduct}
+              className="w-full rounded-xl border-2 border-dashed border-stone-300 py-3 text-sm font-medium text-stone-500 active:border-emerald-500 active:text-emerald-700"
+            >
+              + Продукт
+            </button>
+            {onNewComposite && (
+              <button
+                type="button"
+                onClick={onNewComposite}
+                className="w-full rounded-xl border-2 border-dashed border-stone-300 py-3 text-sm font-medium text-stone-500 active:border-emerald-500 active:text-emerald-700"
+              >
+                + Составной
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -584,12 +717,12 @@ function ProductRow({ product, topMeal, showStar, onToggleFavorite, onEdit, onDe
             {meta && <span className="text-stone-400"> · {meta}</span>}
           </span>
           <span className="block text-xs leading-snug text-stone-500">
-            Б <b>{fmt0(product.protein100)}</b> · Ж <b>{fmt0(product.fat100)}</b> · У{' '}
-            <b>{fmt0(product.carbs100)}</b>
+            Б <b>{fmt1(product.protein100)}</b> · Ж <b>{fmt1(product.fat100)}</b> · У{' '}
+            <b>{fmt1(product.carbs100)}</b>
           </span>
         </span>
         <span className="shrink-0 text-right">
-          <span className="block text-[0.9375rem] font-semibold leading-tight">{fmt0(product.kcal100)}</span>
+          <span className="block text-[0.9375rem] font-semibold leading-tight">{fmt1(product.kcal100)}</span>
           <span className="block text-[0.625rem] leading-tight text-stone-400">ккал/100г</span>
         </span>
       </button>

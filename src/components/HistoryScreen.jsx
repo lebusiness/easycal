@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db.js';
 import { api } from '../api-client.js';
-import { toISODate, shiftDate, fmt0, kcalFromMacros, notifyError } from '../utils.js';
+import { toISODate, shiftDate, fmt1, round1, kcalFromMacros, notifyError } from '../utils.js';
 import Header from './Header.jsx';
 import { useBackClose } from '../navigation.js';
 
@@ -31,9 +31,11 @@ async function exportCsv() {
     t.fat += e.fat || 0;
     t.carbs += e.carbs || 0;
   }
+  // Десятые сохраняем; запятая как десятичный знак — колонки разделяет «;»
+  const num = (n) => String(round1(n)).replace('.', ',');
   const lines = ['Дата;Ккал;Белки;Жиры;Углеводы'];
   for (const [date, t] of [...byDate.entries()].sort()) {
-    lines.push(`${date};${Math.round(t.kcal)};${Math.round(t.protein)};${Math.round(t.fat)};${Math.round(t.carbs)}`);
+    lines.push(`${date};${num(t.kcal)};${num(t.protein)};${num(t.fat)};${num(t.carbs)}`);
   }
   // BOM — чтобы Excel понял кириллицу
   downloadFile(`калории-по-дням-${toISODate(new Date())}.csv`, '﻿' + lines.join('\n'), 'text/csv;charset=utf-8');
@@ -227,7 +229,7 @@ export default function HistoryScreen({ onBack }) {
                   <g>
                     <line x1={M.l} x2={W - M.r} y1={y(goalKcal)} y2={y(goalKcal)} stroke="#059669" strokeWidth="1.5" />
                     <text x={W - M.r} y={y(goalKcal) - 3} textAnchor="end" fontSize="9" fill="#059669" fontWeight="600">
-                      цель {fmt0(goalKcal)}
+                      цель {fmt1(goalKcal)}
                     </text>
                   </g>
                 )}
@@ -252,14 +254,14 @@ export default function HistoryScreen({ onBack }) {
             <div className="flex items-baseline justify-between">
               <span className="text-sm font-semibold">{fmtDay(selectedDay.date)}</span>
               <span className="text-sm">
-                <b>{fmt0(selectedDay.kcal)}</b> <span className="text-xs text-stone-500">ккал</span>
+                <b>{fmt1(selectedDay.kcal)}</b> <span className="text-xs text-stone-500">ккал</span>
               </span>
             </div>
             <div className="mt-1 flex gap-3 text-xs text-stone-600">
               {SERIES.map((m) => (
                 <span key={m.key} className="flex items-center gap-1">
                   <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: m.color }} />
-                  {m.label} <b>{fmt0(selectedDay[m.key])}</b> г
+                  {m.label} <b>{fmt1(selectedDay[m.key])}</b> г
                 </span>
               ))}
             </div>

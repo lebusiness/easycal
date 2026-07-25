@@ -13,11 +13,11 @@ const TABLES = {
   },
   myProducts: {
     table: 'my_products',
-    fields: ['name', 'description', 'barcode', 'favorite', 'presets', 'kcal100', 'protein100', 'fat100', 'carbs100'],
+    fields: ['name', 'description', 'barcode', 'favorite', 'presets', 'ingredients', 'kcal100', 'protein100', 'fat100', 'carbs100'],
   },
   meals: {
     table: 'meals',
-    fields: ['name', 'order'],
+    fields: ['name', 'order', 'goals'],
   },
   favorites: {
     table: 'favorites',
@@ -39,13 +39,16 @@ function rowToClient(row) {
 
 const quoteCol = (field) => `"${camelToSnake(field)}"`;
 
+// JSONB-поля: массивы нужно передавать строкой, иначе pg сериализует их как Postgres-массив
+const JSON_FIELDS = new Set(['presets', 'ingredients', 'goals']);
+
 function pickFields(body, fields) {
   const cols = [];
   const values = [];
   for (const f of fields) {
     if (body[f] !== undefined) {
       cols.push(quoteCol(f));
-      values.push(f === 'presets' && body[f] != null ? JSON.stringify(body[f]) : body[f]);
+      values.push(JSON_FIELDS.has(f) && body[f] != null ? JSON.stringify(body[f]) : body[f]);
     }
   }
   return { cols, values };

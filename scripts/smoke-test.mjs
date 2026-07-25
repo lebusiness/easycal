@@ -151,12 +151,27 @@ setInput(inputByLabel('Углеводы'), '250');
 await sleep(100);
 // 150*4 + 70*9 + 250*4 = 600+630+1000 = 2230
 if (!bodyText().includes('2 230')) throw new Error('Авто-ккал цели не посчитались (нет 2 230)');
+
+// Цели приёма «На ночь»: поля подписаны aria-label
+const mealGoalInput = (label) => {
+  const el = window.document.querySelector(`input[aria-label="${label}"]`);
+  if (!el) throw new Error(`Поле цели приёма «${label}» не найдено`);
+  return el;
+};
+setInput(mealGoalInput('Белки «На ночь»'), '30');
+setInput(mealGoalInput('Жиры «На ночь»'), '10');
+setInput(mealGoalInput('Углеводы «На ночь»'), '20');
+await sleep(100);
+// 30*4 + 10*9 + 20*4 = 120+90+80 = 290 — и в строке приёма, и в сумме
+if (!bodyText().includes('290')) throw new Error('Авто-ккал цели приёма не посчитались (нет 290)');
+if (!bodyText().includes('Сумма по приёмам')) throw new Error('Сумма целей по приёмам не показалась');
 findButton('Сохранить').click();
 await sleep(300);
 if (!bodyText().includes('/150') || !bodyText().includes('/ 2 230')) {
   throw new Error('Прогресс-бары целей не отобразились');
 }
-console.log('✓ Цели: авто-ккал (2 230) и прогресс-бары в дневнике');
+if (!bodyText().includes('0/290')) throw new Error('Прогресс цели приёма «На ночь» не показался (нет 0/290)');
+console.log('✓ Цели: авто-ккал (2 230), цели приёма «На ночь» (290 ккал) и прогресс-бары');
 
 // --- Добавление в «На ночь» через «+» приёма
 const nightSection = [...window.document.querySelectorAll('button')].find((b) =>
@@ -174,7 +189,7 @@ console.log('✓ Экран добавления: выбран приём, ес�
 // --- Свой продукт с авто-ккал
 findButton('Свои').click();
 await sleep(300);
-findButton('+ Новый продукт').click();
+findButton('+ Продукт').click();
 await sleep(200);
 setInput(inputByLabel('Название'), 'Творог 5%');
 // Описание и штрихкод спрятаны за кнопками «+ …» — раскрываем по очереди
@@ -222,8 +237,11 @@ await sleep(500);
 const diaryText = bodyText();
 if (!diaryText.includes('Творог 5%')) throw new Error('Запись не появилась в дневнике');
 if (!/\d{2}:\d{2}/.test(diaryText)) throw new Error('Время добавления не отображается');
-if (!diaryText.includes('26/150')) throw new Error('Белки в прогрессе не обновились (ожидалось 26/150)');
-console.log('✓ Запись в «На ночь» с временем добавления, белки 26/150 в прогрессе');
+// Белки хранятся с десятыми: 17 г × 150 г / 100 = 25,5
+if (!diaryText.includes('25,5/150')) throw new Error('Белки в прогрессе не обновились (ожидалось 25,5/150)');
+if (!diaryText.includes('180/290')) throw new Error('Ккал в прогрессе приёма не обновились (ожидалось 180/290)');
+if (!diaryText.includes('25,5/30')) throw new Error('Белки в прогрессе приёма не обновились (ожидалось 25,5/30)');
+console.log('✓ Запись в «На ночь»: белки 25,5/150 в дне и 25,5/30 в приёме, ккал 180/290');
 
 // --- Редактирование записи: тап по строке → 200 г → пересчёт
 findButton('Творог 5%').click();
@@ -237,7 +255,18 @@ findButton('Сохранить').click();
 await sleep(400);
 if (!bodyText().includes('240')) throw new Error('Запись не пересчиталась после редактирования (нет 240 ккал)');
 if (!bodyText().includes('34/150')) throw new Error('Белки после редактирования не обновились (ожидалось 34/150)');
-console.log('✓ Редактор записи: 200 г → 240 ккал, белки 34, время редактируемо');
+if (!bodyText().includes('34/30')) throw new Error('Перебор белка в приёме не показался (ожидалось 34/30)');
+console.log('✓ Редактор записи: 200 г → 240 ккал, белки 34 (в приёме перебор 34/30), время редактируемо');
+
+// --- Прогресс приёмов скрывается тапом по полоске и возвращается тапом по цифрам
+findByAria('Скрыть прогресс приёмов').click();
+await sleep(150);
+if (bodyText().includes('34/30')) throw new Error('Прогресс приёма не скрылся');
+if (!bodyText().includes('240/290')) throw new Error('Компактные ккал/цель в шапке приёма не показались');
+findByAria('Показать прогресс приёмов').click();
+await sleep(150);
+if (!bodyText().includes('34/30')) throw new Error('Прогресс приёма не вернулся');
+console.log('✓ Прогресс приёмов прячется тапом (остаются цифры в шапке) и возвращается');
 
 // --- История: график и значения выбранного дня
 findButton('История').click();
@@ -319,6 +348,53 @@ await sleep(400);
 if (!bodyText().includes('тест · 100 г')) throw new Error('Пресет не сохранился');
 console.log('✓ Пресеты порций: добавляются в редакторе продукта и сохраняются (тест · 100 г)');
 
+// --- Составной продукт: сборка из своего продукта и справочника
+findByAria('Назад').click(); // карточка → поиск
+await sleep(300);
+findButton('Свои').click();
+await sleep(300);
+findButton('+ Составной').click();
+await sleep(200);
+setInput(inputByLabel('Название'), 'Творог с бананом');
+
+// Ингредиент 1: свой продукт из вкладок пикера (частые)
+findButton('+ Добавить ингредиент').click();
+await sleep(400);
+if (!bodyText().includes('Добавить ингредиент')) throw new Error('Пикер ингредиентов не открылся');
+findButton('Творог 5%').click();
+await sleep(400);
+if (!bodyText().includes('Добавить в состав')) throw new Error('Шторка веса ингредиента не открылась');
+findButton('Добавить в состав').click(); // 100 г по умолчанию
+await sleep(300);
+if (!bodyText().includes('Итого 100 г')) throw new Error('Ингредиент «Творог 5%» не попал в состав');
+
+// Ингредиент 2: справочник через поиск, вес 150 г чипом
+findButton('+ Добавить ингредиент').click();
+await sleep(300);
+const pickerSearch = [...window.document.querySelectorAll('input')].find(
+  (i) => i.placeholder === 'Поиск по всем продуктам'
+);
+if (!pickerSearch) throw new Error('Поиск в пикере ингредиентов не найден');
+setInput(pickerSearch, 'банан');
+await sleep(400);
+findButton('Банан').click();
+await sleep(400);
+findButton('150 г').click();
+await sleep(150);
+findButton('Добавить в состав').click();
+await sleep(300);
+// 120 (творог 100 г) + 96*1.5=144 (банан 150 г) = 264 ккал, 250 г
+if (!bodyText().includes('Итого 250 г')) throw new Error('Итоговый вес состава не 250 г');
+if (!bodyText().includes('264')) throw new Error('Итоговые ккал состава не 264');
+findButton('Сохранить продукт').click();
+await sleep(500);
+const compText = bodyText();
+if (!compText.includes('Творог с бананом')) throw new Error('Карточка составного продукта не открылась');
+if (!compText.includes('вся порция · 250 г')) throw new Error('Нет пресета «вся порция · 250 г»');
+if (!compText.includes('Порция: 250 г')) throw new Error('Порция по умолчанию не равна всему блюду');
+if (!compText.includes('264')) throw new Error('Ккал всей порции не 264');
+console.log('✓ Составной продукт: творог 100 г + банан 150 г = 264 ккал, порция «вся порция · 250 г»');
+
 // --- Выход и повторный вход: данные под аккаунтом
 findByAria('Назад').click(); // карточка → поиск
 await sleep(200);
@@ -332,7 +408,21 @@ setInput(inputByLabel('Пароль'), '123456');
 findButton('Войти').click();
 await sleep(1500);
 if (!bodyText().includes('Творог 5%')) throw new Error('После входа данные аккаунта не подгрузились');
-console.log('✓ Аккаунты: выход и вход, данные сохранились под аккаунтом');
+if (!bodyText().includes('240/290')) throw new Error('Цели приёма не пришли с сервера (нет 240/290)');
+console.log('✓ Аккаунты: выход и вход, данные и цели приёмов сохранились под аккаунтом');
+
+// --- Составной продукт пережил сервер: состав и пресеты пришли из снимка Postgres
+findButton('Добавить еду').click();
+await sleep(400);
+findButton('Свои').click();
+await sleep(300);
+if (!bodyText().includes('Творог с бананом')) throw new Error('Составной продукт не пришёл с сервера');
+findButton('Творог с бананом').click();
+await sleep(400);
+if (!bodyText().includes('Порция: 250 г') || !bodyText().includes('вся порция · 250 г')) {
+  throw new Error('Состав/пресеты составного продукта не пережили сервер');
+}
+console.log('✓ Составной продукт: состав и пресет «вся порция» пришли из Postgres после перевхода');
 
 console.log('✓ Смоук-тест пройден');
 process.exit(0);

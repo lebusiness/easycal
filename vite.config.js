@@ -47,7 +47,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        // wasm — декодер штрихкодов (zxing), нужен офлайн
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2,wasm}'],
       },
       manifest: {
         id: '/',
