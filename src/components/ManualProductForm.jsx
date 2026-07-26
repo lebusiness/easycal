@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { addMyProduct, updateMyProduct, deleteMyProduct } from '../db.js';
-import { parseNum, round1, kcalFromMacros, fmt1, notifyError, presetToObj } from '../utils.js';
+import { parseNum, round3, kcalFromMacros, fmt1, notifyError, presetToObj } from '../utils.js';
 import { fileToThumb } from '../image.js';
 import Header from './Header.jsx';
 import GramsWheel from './GramsWheel.jsx';
@@ -106,7 +106,7 @@ export default function ManualProductForm({ prefill, product, onBack, onSaved, o
         setError('У порции укажите вес в граммах (число больше 0)');
         return;
       }
-      const v = round1(gv);
+      const v = round3(gv);
       if (presets.some((p) => p.g === v)) continue;
       const p = { g: v };
       if (row.label.trim()) p.label = row.label.trim();
@@ -120,9 +120,9 @@ export default function ManualProductForm({ prefill, product, onBack, onSaved, o
       description: form.description.trim() || null,
       barcode: barcode || null,
       kcal100: kcal,
-      protein100: round1(macros.protein),
-      fat100: round1(macros.fat),
-      carbs100: round1(macros.carbs),
+      protein100: round3(macros.protein),
+      fat100: round3(macros.fat),
+      carbs100: round3(macros.carbs),
       presets: presets.length ? presets : null,
     };
 

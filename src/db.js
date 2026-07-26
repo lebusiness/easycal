@@ -1,5 +1,5 @@
 import Dexie from 'dexie';
-import { round1 } from './utils.js';
+import { round3 } from './utils.js';
 import { api, ServerError } from './api-client.js';
 import { toast } from './toast.js';
 import { buildQueryPlan, normText, scorePlan, textForms } from './searchText.js';
@@ -48,10 +48,10 @@ export function openUserDb(dbName) {
         e.myProductId = null;
         e.productKey = 'nm:' + (e.name || '').trim().toLowerCase();
         if (e.grams > 0) {
-          e.kcal100 = round1(((e.kcal || 0) / e.grams) * 100);
-          e.protein100 = round1(((e.protein || 0) / e.grams) * 100);
-          e.fat100 = round1(((e.fat || 0) / e.grams) * 100);
-          e.carbs100 = round1(((e.carbs || 0) / e.grams) * 100);
+          e.kcal100 = round3(((e.kcal || 0) / e.grams) * 100);
+          e.protein100 = round3(((e.protein || 0) / e.grams) * 100);
+          e.fat100 = round3(((e.fat || 0) / e.grams) * 100);
+          e.carbs100 = round3(((e.carbs || 0) / e.grams) * 100);
         }
       });
       await tx.table('myProducts').toCollection().modify((p) => {

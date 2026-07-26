@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, deleteDiaryEntry, updateDiaryEntry, entryToProduct, getFavoriteFor } from '../db.js';
-import { toISODate, formatDateLabel, formatDateFull, shiftDate, fmt0, fmt1, round1, formatTime, kcalFromMacros, notifyError } from '../utils.js';
+import { toISODate, formatDateLabel, formatDateFull, shiftDate, fmt0, fmt1, round3, formatTime, kcalFromMacros, notifyError } from '../utils.js';
 import { toast } from '../toast.js';
 import GoalsEditor from './GoalsEditor.jsx';
 import MealsEditor from './MealsEditor.jsx';
@@ -133,11 +133,11 @@ export default function DiaryScreen({ date, onDateChange, onAdd, onScan, onHisto
           : { kcal: 0, protein: 0, fat: 0, carbs: 0 };
     return {
       name: e.name,
-      g: round1(e.grams),
-      kcal100: round1(per.kcal),
-      protein100: round1(per.protein),
-      fat100: round1(per.fat),
-      carbs100: round1(per.carbs),
+      g: round3(e.grams),
+      kcal100: round3(per.kcal),
+      protein100: round3(per.protein),
+      fat100: round3(per.fat),
+      carbs100: round3(per.carbs),
     };
   }
 

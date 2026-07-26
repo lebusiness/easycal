@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { addMyProduct, updateMyProduct, deleteMyProduct } from '../db.js';
-import { parseNum, round1, fmt1, kcalFromMacros, notifyError } from '../utils.js';
+import { parseNum, round3, fmt1, kcalFromMacros, notifyError } from '../utils.js';
 import Header from './Header.jsx';
 import AddFoodScreen from './AddFoodScreen.jsx';
 import { ToggleRow } from './ManualProductForm.jsx';
@@ -38,7 +38,7 @@ export default function CompositeProductForm({ product, initialIngredients, onBa
     total.fat += (r.fat100 * r.gNum) / 100;
     total.carbs += (r.carbs100 * r.gNum) / 100;
   }
-  const per100 = (v) => (totalG > 0 ? round1((v / totalG) * 100) : 0);
+  const per100 = (v) => (totalG > 0 ? round3((v / totalG) * 100) : 0);
 
   // Выбранный в пикере продукт + вес → снапшот-ингредиент
   function handlePick(p, g) {
@@ -50,11 +50,11 @@ export default function CompositeProductForm({ product, initialIngredients, onBa
       ...list,
       {
         name: label,
-        g: String(round1(g)),
-        kcal100: round1(p.kcal100 ?? kcalFromMacros(p.protein100 ?? 0, p.fat100 ?? 0, p.carbs100 ?? 0)),
-        protein100: round1(p.protein100 ?? 0),
-        fat100: round1(p.fat100 ?? 0),
-        carbs100: round1(p.carbs100 ?? 0),
+        g: String(round3(g)),
+        kcal100: round3(p.kcal100 ?? kcalFromMacros(p.protein100 ?? 0, p.fat100 ?? 0, p.carbs100 ?? 0)),
+        protein100: round3(p.protein100 ?? 0),
+        fat100: round3(p.fat100 ?? 0),
+        carbs100: round3(p.carbs100 ?? 0),
       },
     ]);
     setPicking(false);
@@ -82,7 +82,7 @@ export default function CompositeProductForm({ product, initialIngredients, onBa
       }
       list.push({
         name: r.name,
-        g: round1(r.gNum),
+        g: round3(r.gNum),
         kcal100: r.kcal100,
         protein100: r.protein100,
         fat100: r.fat100,
@@ -99,7 +99,7 @@ export default function CompositeProductForm({ product, initialIngredients, onBa
       protein100: per100(total.protein),
       fat100: per100(total.fat),
       carbs100: per100(total.carbs),
-      presets: [{ g: round1(totalG), label: 'вся порция' }],
+      presets: [{ g: round3(totalG), label: 'вся порция' }],
       ingredients: list,
     };
 

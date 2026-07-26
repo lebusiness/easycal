@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db.js';
 import { api } from '../api-client.js';
-import { toISODate, shiftDate, fmt1, round1, kcalFromMacros, notifyError } from '../utils.js';
+import { toISODate, shiftDate, fmt1, round3, kcalFromMacros, notifyError } from '../utils.js';
 import Header from './Header.jsx';
 import { useBackClose } from '../navigation.js';
 
@@ -31,8 +31,8 @@ async function exportCsv() {
     t.fat += e.fat || 0;
     t.carbs += e.carbs || 0;
   }
-  // Десятые сохраняем; запятая как десятичный знак — колонки разделяет «;»
-  const num = (n) => String(round1(n)).replace('.', ',');
+  // Точность не теряем; запятая как десятичный знак — колонки разделяет «;»
+  const num = (n) => String(round3(n)).replace('.', ',');
   const lines = ['Дата;Ккал;Белки;Жиры;Углеводы'];
   for (const [date, t] of [...byDate.entries()].sort()) {
     lines.push(`${date};${num(t.kcal)};${num(t.protein)};${num(t.fat)};${num(t.carbs)}`);

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { updateDiaryEntry, deleteDiaryEntry, getFavoriteFor } from '../db.js';
-import { parseNum, round1, fmt1, formatTime, notifyError } from '../utils.js';
+import { parseNum, round3, fmt1, formatTime, notifyError } from '../utils.js';
 import Header from './Header.jsx';
 import PortionPicker from './PortionPicker.jsx';
 import { useBackClose } from '../navigation.js';
@@ -50,7 +50,7 @@ export default function EntryEditor({ entry, meals, onClose }) {
         : { kcal: 0, protein: 0, fat: 0, carbs: 0 };
 
   const g = parseNum(grams);
-  const portion = (v) => (g == null || g <= 0 ? null : round1((v * g) / 100));
+  const portion = (v) => (g == null || g <= 0 ? null : (v * g) / 100);
 
   async function handleSave() {
     setError(null);
@@ -67,18 +67,18 @@ export default function EntryEditor({ entry, meals, onClose }) {
     }
     try {
       await updateDiaryEntry(entry.id, {
-      grams: round1(g),
-      mealId: meal.id,
-      mealLabel: meal.name,
-      addedAt,
-      kcal: round1((per100.kcal * g) / 100),
-      protein: round1((per100.protein * g) / 100),
-      fat: round1((per100.fat * g) / 100),
-      carbs: round1((per100.carbs * g) / 100),
-        kcal100: round1(per100.kcal),
-        protein100: round1(per100.protein),
-        fat100: round1(per100.fat),
-        carbs100: round1(per100.carbs),
+        grams: round3(g),
+        mealId: meal.id,
+        mealLabel: meal.name,
+        addedAt,
+        kcal: round3((per100.kcal * g) / 100),
+        protein: round3((per100.protein * g) / 100),
+        fat: round3((per100.fat * g) / 100),
+        carbs: round3((per100.carbs * g) / 100),
+        kcal100: round3(per100.kcal),
+        protein100: round3(per100.protein),
+        fat100: round3(per100.fat),
+        carbs100: round3(per100.carbs),
       });
       onClose();
     } catch {

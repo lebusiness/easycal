@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, saveGoals, clearGoals, setMealGoals } from '../db.js';
-import { parseNum, kcalFromMacros, round1, fmt1 } from '../utils.js';
+import { parseNum, kcalFromMacros, round3, fmt1 } from '../utils.js';
 import Header from './Header.jsx';
 import { useBackClose } from '../navigation.js';
 
@@ -45,9 +45,9 @@ export default function GoalsEditor({ goals, onClose }) {
   const sum = setGoals.length
     ? setGoals.reduce(
         (a, g) => ({
-          protein: round1(a.protein + g.protein),
-          fat: round1(a.fat + g.fat),
-          carbs: round1(a.carbs + g.carbs),
+          protein: round3(a.protein + g.protein),
+          fat: round3(a.fat + g.fat),
+          carbs: round3(a.carbs + g.carbs),
         }),
         { protein: 0, fat: 0, carbs: 0 }
       )

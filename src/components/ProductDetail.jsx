@@ -10,7 +10,7 @@ import {
   updateFavoritePresets,
   updateMyProduct,
 } from '../db.js';
-import { parseNum, round1, fmt1, formatTime, kcalFromMacros, notifyError, presetToObj } from '../utils.js';
+import { parseNum, round3, fmt1, formatTime, kcalFromMacros, notifyError, presetToObj } from '../utils.js';
 import { fileToThumb } from '../image.js';
 import Header from './Header.jsx';
 import PortionPicker from './PortionPicker.jsx';
@@ -31,17 +31,17 @@ export default function ProductDetail({ product, entry, date, meal, meals, onMea
   useBackClose(onBack);
   // При открытии карточки докручиваем до кнопки «Добавить»/«Сохранить»
   const actionRef = useScrollToAction();
-  // Значения из OFF бывают вида 7.699999809 — приводим к одному знаку
+  // Значения из OFF бывают вида 7.699999809 — гасим шум, не теряя десятичных
   const [vals, setVals] = useState(() =>
     Object.fromEntries(
-      MACROS.map((m) => [m.key, product[m.key] != null ? String(round1(product[m.key])) : ''])
+      MACROS.map((m) => [m.key, product[m.key] != null ? String(round3(product[m.key])) : ''])
     )
   );
   // У составного продукта порция по умолчанию — всё блюдо целиком
   const [grams, setGrams] = useState(() => {
     if (entry) return String(entry.grams);
     const total = product.ingredients?.reduce((s, ing) => s + (ing.g > 0 ? ing.g : 0), 0);
-    return total > 0 ? String(round1(total)) : '100';
+    return total > 0 ? String(round3(total)) : '100';
   });
   const [time, setTime] = useState(() => (entry ? formatTime(entry.addedAt) ?? '' : ''));
   const [error, setError] = useState(null);
@@ -81,7 +81,7 @@ export default function ProductDetail({ product, entry, date, meal, meals, onMea
 
   // Изменены ли БЖУ относительно исходного продукта
   const dirty = MACROS.some((m) => {
-    const orig = product[m.key] != null ? String(round1(product[m.key])) : '';
+    const orig = product[m.key] != null ? String(round3(product[m.key])) : '';
     return vals[m.key].trim().replace(',', '.') !== orig;
   });
 
@@ -105,10 +105,10 @@ export default function ProductDetail({ product, entry, date, meal, meals, onMea
   function currentProduct() {
     return {
       ...product,
-      kcal100: round1(kcal100),
-      protein100: round1(per100.protein ?? 0),
-      fat100: round1(per100.fat ?? 0),
-      carbs100: round1(per100.carbs ?? 0),
+      kcal100: round3(kcal100),
+      protein100: round3(per100.protein ?? 0),
+      fat100: round3(per100.fat ?? 0),
+      carbs100: round3(per100.carbs ?? 0),
     };
   }
 
@@ -128,11 +128,11 @@ export default function ProductDetail({ product, entry, date, meal, meals, onMea
     }
     const p = currentProduct();
     const portionOf = {
-      grams: round1(g),
-      kcal: round1((p.kcal100 * g) / 100),
-      protein: round1((p.protein100 * g) / 100),
-      fat: round1((p.fat100 * g) / 100),
-      carbs: round1((p.carbs100 * g) / 100),
+      grams: round3(g),
+      kcal: round3((p.kcal100 * g) / 100),
+      protein: round3((p.protein100 * g) / 100),
+      fat: round3((p.fat100 * g) / 100),
+      carbs: round3((p.carbs100 * g) / 100),
     };
     setSaving(true);
     try {
@@ -216,7 +216,7 @@ export default function ProductDetail({ product, entry, date, meal, meals, onMea
 
   function addCurrentPreset() {
     if (g == null || g <= 0) return;
-    const v = round1(g);
+    const v = round3(g);
     if ((presets ?? []).some((p) => p.g === v)) return;
     const next = [...(presets ?? []), { g: v }].sort((a, b) => a.g - b.g);
     savePresets(next);
@@ -466,7 +466,7 @@ export default function ProductDetail({ product, entry, date, meal, meals, onMea
                   </button>
                 </span>
               ))}
-              {g != null && g > 0 && !(presets ?? []).some((p) => p.g === round1(g)) && (
+              {g != null && g > 0 && !(presets ?? []).some((p) => p.g === round3(g)) && (
                 <button
                   type="button"
                   onClick={addCurrentPreset}

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import GramsWheel from './GramsWheel.jsx';
 import PhotoViewer from './PhotoViewer.jsx';
-import { parseNum, fmt1, round1, presetToObj } from '../utils.js';
+import { parseNum, fmt1, round3, presetToObj } from '../utils.js';
 
 const GRAM_PRESETS = [50, 100, 150, 200];
 
@@ -35,10 +35,10 @@ export default function PortionPicker({ grams, onChange, presets }) {
 
   function tapPreset(pg) {
     const cur = parseNum(grams);
-    if (multi && multi.g === pg && cur != null && cur === round1(pg * multi.count)) {
+    if (multi && multi.g === pg && cur != null && cur === round3(pg * multi.count)) {
       const count = multi.count + 1;
       setMulti({ g: pg, count });
-      onChange(String(round1(pg * count)));
+      onChange(String(round3(pg * count)));
     } else {
       setMulti({ g: pg, count: 1 });
       onChange(String(pg));
@@ -79,7 +79,7 @@ export default function PortionPicker({ grams, onChange, presets }) {
       <div className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto">
         {(presets?.length ? presets : GRAM_PRESETS).map(presetToObj).map((p) => {
           const count =
-            multi && multi.g === p.g && g === round1(p.g * multi.count)
+            multi && multi.g === p.g && g === round3(p.g * multi.count)
               ? multi.count
               : g === p.g
                 ? 1

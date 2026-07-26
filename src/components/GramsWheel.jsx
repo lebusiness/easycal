@@ -1,13 +1,16 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { parseNum } from '../utils.js';
 
 const ITEM_H = 40; // px, высота пункта барабана
 const WHEEL_H = 120; // 3 видимых пункта
 const PAD = (WHEEL_H - ITEM_H) / 2; // отступы, чтобы крайние значения вставали по центру
 
-// Вертикальный барабан выбора значения: крутится пальцем, значение фиксируется по центру
+// Вертикальный барабан выбора значения: крутится пальцем, значение фиксируется по центру.
+// Крутится по целым, но точные значения вне сетки (7,7 из базы, 600 с клавиатуры)
+// не теряются: такое значение становится отдельным пунктом барабана и остаётся
+// выбранным, пока его не сменили прокруткой.
 export default function GramsWheel({ value, onChange, min = 1, max = 500, step = 1, unit = 'г', ariaLabel = 'Выбор веса порции' }) {
-  const values = useMemo(() => {
+  const grid = useMemo(() => {
     const arr = [];
     for (let v = min; v <= max; v += step) arr.push(v);
     return arr;
@@ -16,6 +19,19 @@ export default function GramsWheel({ value, onChange, min = 1, max = 500, step =
   const ref = useRef(null);
   const fromScrollRef = useRef(null);
   const current = parseNum(String(value)) ?? 0;
+
+  const offGrid = (v) => Number.isFinite(v) && v >= min && !grid.includes(v);
+
+  // Пункты вне сетки живут до закрытия экрана: индексы стабильны, и к своему
+  // точному значению можно вернуться прокруткой
+  const [extras, setExtras] = useState(() => (offGrid(current) ? [current] : []));
+  useEffect(() => {
+    if (offGrid(current)) {
+      setExtras((xs) => (xs.includes(current) ? xs : [...xs, current]));
+    }
+  }, [current, grid]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const values = useMemo(() => [...grid, ...extras].sort((a, b) => a - b), [grid, extras]);
 
   const nearestIndex = (v) => {
     let best = 0;
@@ -39,7 +55,11 @@ export default function GramsWheel({ value, onChange, min = 1, max = 500, step =
     }
     const el = ref.current;
     if (!el) return;
-    const target = nearestIndex(current) * ITEM_H;
+    // Значение ещё не попало в список пунктов (ждём extras) — не крутим, иначе
+    // прокрутка к «ближайшему» пункту перезапишет точное значение
+    const idx = values.indexOf(current);
+    if (idx === -1) return;
+    const target = idx * ITEM_H;
     if (Math.abs(el.scrollTop - target) > 1) {
       try {
         if (typeof el.scrollTo === 'function') el.scrollTo({ top: target });
@@ -61,8 +81,11 @@ export default function GramsWheel({ value, onChange, min = 1, max = 500, step =
     }
   }
 
-  // Подсвечиваем ближайший пункт: значение может быть дробным (7.7 из базы), пунктов таких нет
-  const activeIdx = nearestIndex(current);
+  // Подсвечиваем точное значение, а если его нет в списке — ближайший пункт
+  const exactIdx = values.indexOf(current);
+  const activeIdx = exactIdx !== -1 ? exactIdx : nearestIndex(current);
+
+  const labelOf = (v) => String(v).replace('.', ',');
 
   return (
     <div className="relative h-[120px] overflow-hidden rounded-xl bg-stone-50">
@@ -83,7 +106,7 @@ export default function GramsWheel({ value, onChange, min = 1, max = 500, step =
               i === activeIdx ? 'text-xl font-bold text-emerald-700' : 'text-base text-stone-400'
             }`}
           >
-            {unit ? `${v} ${unit}` : v}
+            {unit ? `${labelOf(v)} ${unit}` : labelOf(v)}
           </button>
         ))}
       </div>
