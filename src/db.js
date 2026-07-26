@@ -61,6 +61,7 @@ export function openUserDb(dbName) {
     });
 
   session += 1;
+  stopSnapshotRetry();
   db = d;
   return d;
 }
@@ -91,6 +92,44 @@ export async function pullSnapshot() {
       ]);
     }
   );
+}
+
+// Снапшот с автоповтором. Сервер может быть недоступен ровно в момент входа
+// (рестарт при деплое, обрыв сети) — раньше ошибка молча глоталась, и пользователь
+// оставался на пустом или устаревшем зеркале, что выглядело как «аккаунт без
+// данных». Теперь повторяем с нарастающей паузой, пока аккаунт открыт: как только
+// связь вернётся, liveQuery сам дорисует данные — перелогиниваться не нужно.
+let syncTimer = null;
+let syncAttempt = 0;
+
+function stopSnapshotRetry() {
+  clearTimeout(syncTimer);
+  syncTimer = null;
+  syncAttempt = 0;
+}
+
+export async function syncSnapshot() {
+  if (!db) return false;
+  const startedIn = session;
+  clearTimeout(syncTimer);
+  try {
+    await pullSnapshot();
+    if (startedIn === session) syncAttempt = 0;
+    return true;
+  } catch {
+    if (startedIn !== session || !db) return false;
+    // Пустое зеркало без снапшота — экран выглядит как чистый аккаунт: предупреждаем.
+    // meals есть у любого синхронизированного аккаунта (создаются при регистрации).
+    if (syncAttempt === 0 && (await db.meals.count().catch(() => 1)) === 0) {
+      toast('Нет связи с сервером — записи появятся, когда она восстановится');
+    }
+    const delay = Math.min(30_000, 2_000 * 2 ** syncAttempt);
+    syncAttempt += 1;
+    syncTimer = setTimeout(() => {
+      if (startedIn === session) syncSnapshot();
+    }, delay);
+    return false;
+  }
 }
 
 // ---------- Оптимистичные мутации ----------
@@ -265,6 +304,7 @@ export async function deleteDiaryEntry(id) {
 
 export function closeUserDb() {
   session += 1;
+  stopSnapshotRetry();
   if (db) {
     try {
       db.close();

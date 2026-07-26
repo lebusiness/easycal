@@ -37,14 +37,21 @@ export async function loginUser(email, password) {
 export async function getSessionUser() {
   if (!getToken()) return null;
   try {
-    const { user } = await api.get('/auth/me');
+    const { user, token } = await api.get('/auth/me');
+    // Скользящая сессия: сервер выдаёт свежий токен — активный пользователь
+    // никогда не разлогинивается по истечении срока старого
+    if (token) setToken(token);
     cacheUser(user);
     return user;
   } catch (e) {
-    // Сервер недоступен — работаем с кэшированным профилем и локальным зеркалом
-    if (e.network) return cachedUser();
-    clearSession();
-    return null;
+    // Сессию сбрасываем только если сервер ЯВНО отверг токен (401).
+    // Сбой сети, 5xx при рестарте сервера, 429 от rate-limit — не повод
+    // терять аккаунт: работаем с кэшированным профилем и локальным зеркалом.
+    if (e.status === 401) {
+      clearSession();
+      return null;
+    }
+    return cachedUser();
   }
 }
 

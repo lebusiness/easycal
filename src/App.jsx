@@ -5,7 +5,7 @@ import HistoryScreen from './components/HistoryScreen.jsx';
 import AuthScreen from './components/AuthScreen.jsx';
 import Toasts from './components/Toasts.jsx';
 import { Spinner } from './components/Icons.jsx';
-import { openUserDb, closeUserDb, pullSnapshot } from './db.js';
+import { openUserDb, closeUserDb, syncSnapshot } from './db.js';
 import { getSessionUser, cachedUser, clearSession } from './auth.js';
 import { getToken } from './api-client.js';
 import { toISODate } from './utils.js';
@@ -38,11 +38,12 @@ export default function App() {
             closeUserDb();
             openUserDb(`calorie-tracker-u${u.id}`);
           }
-          // Сервер недоступен — остаёмся на последнем локальном зеркале
-          await pullSnapshot().catch(() => {});
+          // Сервер недоступен — остаёмся на последнем локальном зеркале,
+          // syncSnapshot сам дотянет свежие данные, когда связь вернётся
+          await syncSnapshot();
           if (alive) setUser(u);
         } else {
-          // Токен отвергнут сервером — выходим из аккаунта
+          // Сервер явно отверг токен (401) — выходим из аккаунта
           closeUserDb();
           clearSession();
           setUser(null);
@@ -56,9 +57,18 @@ export default function App() {
     };
   }, []);
 
+  // Вернулась сеть — сразу дотягиваем свежий снапшот, не дожидаясь таймера повтора
+  useEffect(() => {
+    const onOnline = () => {
+      if (getToken()) syncSnapshot();
+    };
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, []);
+
   async function handleAuthed(u) {
     openUserDb(`calorie-tracker-u${u.id}`);
-    await pullSnapshot().catch(() => {});
+    await syncSnapshot();
     setScreen({ name: 'diary' });
     setUser(u);
   }

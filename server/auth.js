@@ -83,7 +83,9 @@ authRouter.get('/me', requireAuth, async (req, res, next) => {
   try {
     const r = await pool.query('SELECT id, email FROM users WHERE id = $1', [req.userId]);
     if (!r.rows[0]) return res.status(401).json({ error: 'Аккаунт не найден' });
-    res.json({ user: publicUser(r.rows[0]) });
+    // Каждая успешная проверка сессии продлевает её: выдаём свежий токен,
+    // чтобы активного пользователя не разлогинивало по истечении TOKEN_TTL
+    res.json({ user: publicUser(r.rows[0]), token: signToken(r.rows[0].id) });
   } catch (e) {
     next(e);
   }
