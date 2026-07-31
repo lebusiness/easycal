@@ -108,6 +108,10 @@ limit_req_zone $binary_remote_addr zone=calorie_auth:10m rate=30r/m;
 limit_conn_zone $binary_remote_addr zone=calorie_conn:10m;
 EOF
 
+# nameserver системы для nginx-resolver (на Ubuntu — stub systemd-resolved)
+RESOLVER="$(awk '/^nameserver/{print $2; exit}' /etc/resolv.conf 2>/dev/null || true)"
+RESOLVER="${RESOLVER:-127.0.0.53}"
+
 cat > "/etc/nginx/sites-available/$SERVICE" <<EOF
 server {
     listen 80;
@@ -115,6 +119,9 @@ server {
 
     client_max_body_size 2m;
     limit_conn calorie_conn 20;
+
+    # Для off-проксей ниже: имена апстримов резолвятся на лету во время запроса
+    resolver $RESOLVER valid=300s ipv6=off;
 
     gzip on;
     gzip_types text/css application/javascript application/json image/svg+xml application/manifest+json;
@@ -139,19 +146,30 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
-    # Прокси к Open Food Facts: у их поиска сломан CORS, ходим со своего домена
+    # Прокси к Open Food Facts: у их поиска сломан CORS, ходим со своего домена.
+    # Хостнейм — через переменную: так nginx резолвит DNS при каждом запросе,
+    # а не один раз на старте. С литеральным хостнеймом в proxy_pass сбой DNS
+    # в момент (пере)запуска — например, при ночном unattended-upgrades — валит
+    # nginx целиком ([emerg] host not found in upstream), и сайт лежит до
+    # ручного рестарта. rewrite срезает префикс, как это делал URI в proxy_pass.
     location /off-search/ {
-        proxy_pass https://search.openfoodfacts.org/;
+        set \$off_search search.openfoodfacts.org;
+        rewrite ^/off-search(/.*)\$ \$1 break;
+        proxy_pass https://\$off_search;
         proxy_ssl_server_name on;
         proxy_set_header Host search.openfoodfacts.org;
     }
     location /off-ru/ {
-        proxy_pass https://ru.openfoodfacts.org/;
+        set \$off_ru ru.openfoodfacts.org;
+        rewrite ^/off-ru(/.*)\$ \$1 break;
+        proxy_pass https://\$off_ru;
         proxy_ssl_server_name on;
         proxy_set_header Host ru.openfoodfacts.org;
     }
     location /off-world/ {
-        proxy_pass https://world.openfoodfacts.org/;
+        set \$off_world world.openfoodfacts.org;
+        rewrite ^/off-world(/.*)\$ \$1 break;
+        proxy_pass https://\$off_world;
         proxy_ssl_server_name on;
         proxy_set_header Host world.openfoodfacts.org;
     }
@@ -159,6 +177,21 @@ server {
 EOF
 ln -sf "/etc/nginx/sites-available/$SERVICE" "/etc/nginx/sites-enabled/$SERVICE"
 rm -f /etc/nginx/sites-enabled/default
+
+# В дефолтном юните Ubuntu у nginx нет Restart — сорвавшийся старт оставляет
+# сайт лежать до ручного вмешательства. Переподнимаем сами; на загрузке ждём DNS.
+mkdir -p /etc/systemd/system/nginx.service.d
+cat > /etc/systemd/system/nginx.service.d/50-restart.conf <<'EOF'
+[Unit]
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+Restart=on-failure
+RestartSec=5s
+EOF
+systemctl daemon-reload
+
 nginx -t
 systemctl enable --now nginx
 systemctl reload nginx
